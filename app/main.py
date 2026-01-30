@@ -184,8 +184,9 @@ def create_application() -> FastAPI:
         )
     
     # ===== ROUTERS =====
-    from app.api import health
+    from app.api import health, connection
     app.include_router(health.router, prefix="/health", tags=["Health"])
+    app.include_router(connection.router, prefix="/connect", tags=["Connection"])
     
     return app
 
