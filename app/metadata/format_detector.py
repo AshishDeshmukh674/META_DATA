@@ -124,7 +124,7 @@ class FormatDetector:
                     "message": f"No files found at path '{self.path}'",
                     "file_count": 0,
                     "markers_found": [],
-                    "timestamp": datetime.utcnow().isoformat() + "Z".isoformat() + "Z"
+                    "timestamp": datetime.utcnow().isoformat() + "Z"
                 }
             
             # Count data files
