@@ -16,6 +16,11 @@ from typing import Optional
 from datetime import datetime
 
 
+def datetime_to_iso(dt: datetime) -> str:
+    """Convert datetime to ISO 8601 string."""
+    return dt.isoformat() + "Z" if dt else None
+
+
 class AWSCredentials(BaseModel):
     """
     AWS credentials for S3 access.
@@ -148,6 +153,9 @@ class ConnectionTestResult(BaseModel):
     )
     
     class Config:
+        json_encoders = {
+            datetime: lambda v: v.isoformat() + "Z"
+        }
         json_schema_extra = {
             "example": {
                 "success": True,
@@ -190,6 +198,117 @@ class ConnectionError(BaseModel):
                 "error": "InvalidCredentials",
                 "message": "The AWS Access Key ID you provided does not exist in our records",
                 "suggestion": "Check your AWS_ACCESS_KEY_ID in the .env file or request body",
+                "timestamp": "2026-01-30T10:30:00Z"
+            }
+        }
+
+
+class DetectFormatRequest(BaseModel):
+    """
+    Request to detect table format.
+    
+    Used in POST /detect-format endpoint.
+    """
+    storage_type: str = Field(
+        ...,
+        description="Storage backend type",
+        pattern="^(aws|minio)$",
+        example="minio"
+    )
+    bucket: str = Field(
+        ...,
+        description="Bucket name",
+        min_length=3,
+        example="lakehouse"
+    )
+    path: str = Field(
+        ...,
+        description="Path to table within bucket (without leading slash)",
+        example="warehouse/sales"
+    )
+    
+    # Optional: credentials (if not using .env)
+    access_key: Optional[str] = Field(
+        None,
+        description="Access key (optional, uses .env if not provided)"
+    )
+    secret_key: Optional[str] = Field(
+        None,
+        description="Secret key (optional, uses .env if not provided)"
+    )
+    endpoint: Optional[str] = Field(
+        None,
+        description="MinIO endpoint (only for storage_type=minio)"
+    )
+    region: Optional[str] = Field(
+        "us-east-1",
+        description="AWS region (only for storage_type=aws)"
+    )
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "storage_type": "minio",
+                "bucket": "lakehouse",
+                "path": "warehouse/sales"
+            }
+        }
+
+
+class DetectFormatResponse(BaseModel):
+    """
+    Result of format detection.
+    
+    Returned by /detect-format endpoint.
+    """
+    success: bool = Field(
+        ...,
+        description="Whether detection was successful"
+    )
+    format: str = Field(
+        ...,
+        description="Detected format: delta, iceberg, hudi, parquet, or unknown"
+    )
+    confidence: str = Field(
+        ...,
+        description="Confidence level: high, medium, low"
+    )
+    metadata_location: Optional[str] = Field(
+        None,
+        description="Location of metadata files (if applicable)"
+    )
+    markers_found: list[str] = Field(
+        default_factory=list,
+        description="Format signature markers found"
+    )
+    file_count: int = Field(
+        ...,
+        description="Total number of files found at path"
+    )
+    data_files: int = Field(
+        default=0,
+        description="Number of data files (.parquet)"
+    )
+    message: str = Field(
+        ...,
+        description="Human-readable detection result"
+    )
+    timestamp: str = Field(
+        ...,
+        description="ISO 8601 timestamp"
+    )
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "success": True,
+                "format": "delta",
+                "confidence": "high",
+                "metadata_location": "s3://lakehouse/warehouse/sales/_delta_log/",
+                "markers_found": ["_delta_log/", "00000000000000000000.json"],
+                "file_count": 15,
+                "data_files": 12,
+                "message": "Detected Delta Lake table with transaction log",
                 "timestamp": "2026-01-30T10:30:00Z"
             }
         }

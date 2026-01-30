@@ -108,7 +108,7 @@ class AWSConnectionService:
                     "bucket": bucket,
                     "bucket_exists": False,
                     "can_list": False,
-                    "timestamp": datetime.utcnow()
+                    "timestamp": datetime.utcnow().isoformat() + "Z"
                 }
             
             # Test 2: Try to list objects
@@ -137,7 +137,7 @@ class AWSConnectionService:
                 "can_list": can_list,
                 "can_read": can_read,
                 "object_count": object_count,
-                "timestamp": datetime.utcnow()
+                "timestamp": datetime.utcnow().isoformat() + "Z"
             }
             
         except NoCredentialsError:
@@ -256,5 +256,5 @@ class AWSConnectionService:
             "error": error,
             "message": message,
             "suggestion": suggestion,
-            "timestamp": datetime.utcnow()
+            "timestamp": datetime.utcnow().isoformat() + "Z"
         }
