@@ -184,10 +184,11 @@ def create_application() -> FastAPI:
         )
     
     # ===== ROUTERS =====
-    from app.api import health, connection, detect
+    from app.api import health, connection, detect, metadata
     app.include_router(health.router, prefix="/health", tags=["Health"])
     app.include_router(connection.router, prefix="/connect", tags=["Connection"])
     app.include_router(detect.router, prefix="/detect-format", tags=["Detection"])
+    app.include_router(metadata.router, tags=["Metadata"])  # prefix="/metadata" already in router
     
     return app
 

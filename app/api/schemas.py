@@ -312,3 +312,70 @@ class DetectFormatResponse(BaseModel):
                 "timestamp": "2026-01-30T10:30:00Z"
             }
         }
+
+
+# ============================================================================
+# Phase 5: Metadata Exploration Schemas
+# ============================================================================
+
+
+class MetadataRequest(BaseModel):
+    """
+    Request for metadata operations (schema, partitions, snapshots, files).
+    
+    Used in POST /metadata/* endpoints.
+    """
+    storage_type: str = Field(
+        ...,
+        description="Storage backend type",
+        pattern="^(aws|minio)$",
+        example="aws"
+    )
+    bucket: str = Field(
+        ...,
+        description="Bucket name",
+        min_length=3,
+        example="metadataproject"
+    )
+    path: str = Field(
+        ...,
+        description="Path to table within bucket",
+        example="test-data/sample-data/delta/sales_delta"
+    )
+    format: Optional[str] = Field(
+        None,
+        description="Table format (delta/iceberg/hudi/parquet). If not provided, will be auto-detected.",
+        pattern="^(delta|iceberg|hudi|parquet)$",
+        example="delta"
+    )
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "storage_type": "aws",
+                "bucket": "metadataproject",
+                "path": "test-data/sample-data/delta/sales_delta",
+                "format": "delta"
+            }
+        }
+
+
+class MetadataResponse(BaseModel):
+    """Generic metadata response wrapper."""
+    success: bool = Field(..., description="Whether operation succeeded")
+    table_format: str = Field(..., description="Table format: delta/iceberg/hudi/parquet")
+    data: dict = Field(..., description="Format-specific metadata")
+    timestamp: str = Field(default_factory=lambda: datetime.utcnow().isoformat() + "Z")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "success": True,
+                "table_format": "delta",
+                "data": {
+                    "schema": {"fields": []},
+                    "version": 5
+                },
+                "timestamp": "2026-01-31T10:30:00Z"
+            }
+        }
