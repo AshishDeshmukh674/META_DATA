@@ -38,6 +38,8 @@ logs/*.log
 .coverage
 htmlcov/
 .tox/
+test_*.py
+notes.md
 
 # Spark
 metastore_db/

@@ -12,7 +12,7 @@ Why Pydantic Models?
 """
 
 from pydantic import BaseModel, Field, validator
-from typing import Optional
+from typing import Optional, Dict, Any, List
 from datetime import datetime
 
 
@@ -379,3 +379,268 @@ class MetadataResponse(BaseModel):
                 "timestamp": "2026-01-31T10:30:00Z"
             }
         }
+
+
+# ============================================================================
+# Phase 6: Metadata Generation & Snapshot Management Schemas
+# ============================================================================
+
+
+class MetadataGenerateRequest(BaseModel):
+    """
+    Request to generate metadata snapshot using Spark.
+    
+    Used in POST /metadata/generate endpoint.
+    
+    Process:
+    1. If convert_to_lakehouse=True: Convert raw data (CSV/JSON/Parquet) to lakehouse format first
+    2. Auto-detect format if not provided (using Phase 4 detector)
+    3. Use Spark to load table
+    4. Extract metadata (schema, partitions, files, version)
+    5. Generate snapshot_id
+    6. Save to S3 at <table_path>/.metadata-snapshots/<snapshot_id>.json
+    
+    Examples:
+    - Existing Delta table: {"storage_type":"aws", "bucket":"mybucket", "path":"tables/delta_table", "table_format":"delta"}
+    - Convert CSV to Delta: {"storage_type":"aws", "bucket":"mybucket", "path":"raw/data.csv", "convert_to_lakehouse":true, "target_format":"delta", "source_format":"csv"}
+    """
+    storage_type: str = Field(
+        ...,
+        description="Storage backend type",
+        pattern="^(aws|minio)$",
+        example="aws"
+    )
+    bucket: str = Field(
+        ...,
+        description="S3 bucket name",
+        min_length=3,
+        example="metadataproject"
+    )
+    path: str = Field(
+        ...,
+        description="Path to table within bucket (or path to raw data file if converting)",
+        example="test-data/sample-data/delta/sales_delta"
+    )
+    table_format: Optional[str] = Field(
+        None,
+        description="Table format (delta/iceberg/hudi/parquet). Auto-detected if not provided and convert_to_lakehouse=False.",
+        pattern="^(delta|iceberg|hudi|parquet)$",
+        example="delta"
+    )
+    
+    # NEW: Raw data conversion parameters
+    convert_to_lakehouse: Optional[bool] = Field(
+        False,
+        description="If True, converts raw data files (CSV/JSON/Parquet) to lakehouse format before generating metadata"
+    )
+    target_format: Optional[str] = Field(
+        None,
+        description="Target lakehouse format for conversion (required if convert_to_lakehouse=True)",
+        pattern="^(delta|iceberg|hudi)$",
+        example="delta"
+    )
+    source_format: Optional[str] = Field(
+        None,
+        description="Source file format (required if convert_to_lakehouse=True)",
+        pattern="^(csv|json|parquet|avro|orc)$",
+        example="csv"
+    )
+    partition_columns: Optional[List[str]] = Field(
+        None,
+        description="Columns to partition by when converting to lakehouse format",
+        example=["year", "month"]
+    )
+    
+    force_refresh: Optional[bool] = Field(
+        False,
+        description="Force regeneration even if recent snapshot exists"
+    )
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "storage_type": "aws",
+                "bucket": "metadataproject",
+                "path": "test-data/sample-data/delta/sales_delta",
+                "table_format": "delta",
+                "force_refresh": False
+            }
+        }
+
+
+class MetadataGenerateResponse(BaseModel):
+    """
+    Response from metadata generation.
+    
+    Returned by POST /metadata/generate endpoint.
+    """
+    success: bool = Field(..., description="Whether generation succeeded")
+    snapshot_id: str = Field(..., description="Generated snapshot ID")
+    table_path: str = Field(..., description="Full S3 path to table")
+    table_format: str = Field(..., description="Detected/provided table format")
+    generated_at: str = Field(..., description="ISO8601 timestamp of generation")
+    snapshot_location: str = Field(..., description="Full S3 URI of saved snapshot")
+    metadata_summary: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Summary of extracted metadata"
+    )
+    error: Optional[str] = Field(None, description="Error message if failed")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "success": True,
+                "snapshot_id": "snapshot_20260207_173045_a1b2c3d4",
+                "table_path": "s3a://metadataproject/test-data/sample-data/delta/sales_delta",
+                "table_format": "delta",
+                "generated_at": "2026-02-07T17:30:45Z",
+                "snapshot_location": "s3://metadataproject/test-data/sample-data/delta/sales_delta/.metadata-snapshots/snapshot_20260207_173045_a1b2c3d4.json",
+                "metadata_summary": {
+                    "column_count": 8,
+                    "file_count": 127,
+                    "total_size_bytes": 4589234567
+                }
+            }
+        }
+
+
+class SnapshotInfo(BaseModel):
+    """Information about a single snapshot."""
+    snapshot_id: str = Field(..., description="Snapshot ID")
+    timestamp: str = Field(..., description="Snapshot creation timestamp")
+    size_bytes: int = Field(..., description="Snapshot file size")
+    s3_key: str = Field(..., description="S3 key for snapshot")
+
+
+class SnapshotListResponse(BaseModel):
+    """
+    Response from listing snapshots.
+    
+    Returned by GET /metadata/snapshots/list endpoint.
+    """
+    success: bool = Field(..., description="Whether listing succeeded")
+    table_path: str = Field(..., description="Full S3 path to table")
+    snapshot_count: int = Field(..., description="Total number of snapshots")
+    snapshots: List[SnapshotInfo] = Field(..., description="List of snapshots (newest first)")
+    error: Optional[str] = Field(None, description="Error message if failed")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "success": True,
+                "table_path": "s3://metadataproject/test-data/sample-data/delta/sales_delta",
+                "snapshot_count": 3,
+                "snapshots": [
+                    {
+                        "snapshot_id": "snapshot_20260208_090000_ghi78901",
+                        "timestamp": "2026-02-08T09:00:00Z",
+                        "size_bytes": 15234,
+                        "s3_key": "test-data/sample-data/delta/sales_delta/.metadata-snapshots/snapshot_20260208_090000_ghi78901.json"
+                    },
+                    {
+                        "snapshot_id": "snapshot_20260207_180000_def45678",
+                        "timestamp": "2026-02-07T18:00:00Z",
+                        "size_bytes": 14890,
+                        "s3_key": "test-data/sample-data/delta/sales_delta/.metadata-snapshots/snapshot_20260207_180000_def45678.json"
+                    }
+                ]
+            }
+        }
+
+
+class SnapshotDiffRequest(BaseModel):
+    """
+    Request to compare two snapshots.
+    
+    Used in POST /metadata/snapshots/diff endpoint.
+    """
+    storage_type: str = Field(
+        ...,
+        description="Storage backend type",
+        pattern="^(aws|minio)$",
+        example="aws"
+    )
+    bucket: str = Field(
+        ...,
+        description="S3 bucket name",
+        min_length=3,
+        example="metadataproject"
+    )
+    path: str = Field(
+        ...,
+        description="Path to table within bucket",
+        example="test-data/sample-data/delta/sales_delta"
+    )
+    snapshot_id_1: str = Field(
+        ...,
+        description="First snapshot ID (usually older)",
+        example="snapshot_20260207_173045_a1b2c3d4"
+    )
+    snapshot_id_2: str = Field(
+        ...,
+        description="Second snapshot ID (usually newer)",
+        example="snapshot_20260208_090000_ghi78901"
+    )
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "storage_type": "aws",
+                "bucket": "metadataproject",
+                "path": "test-data/sample-data/delta/sales_delta",
+                "snapshot_id_1": "snapshot_20260207_173045_a1b2c3d4",
+                "snapshot_id_2": "snapshot_20260208_090000_ghi78901"
+            }
+        }
+
+
+class SchemaChange(BaseModel):
+    """Schema change details."""
+    column: str = Field(..., description="Column name")
+    old_type: str = Field(..., description="Old data type")
+    new_type: str = Field(..., description="New data type")
+
+
+class SnapshotDiffResponse(BaseModel):
+    """
+    Response from snapshot comparison.
+    
+    Returned by POST /metadata/snapshots/diff endpoint.
+    """
+    success: bool = Field(..., description="Whether comparison succeeded")
+    snapshot1_id: str = Field(..., description="First snapshot ID")
+    snapshot2_id: str = Field(..., description="Second snapshot ID")
+    schema_changes: Dict[str, Any] = Field(
+        ...,
+        description="Schema differences (added/removed columns, type changes)"
+    )
+    file_changes: Dict[str, Any] = Field(
+        ...,
+        description="File differences (count change, size change)"
+    )
+    error: Optional[str] = Field(None, description="Error message if failed")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "success": True,
+                "snapshot1_id": "snapshot_20260207_173045_a1b2c3d4",
+                "snapshot2_id": "snapshot_20260208_090000_ghi78901",
+                "schema_changes": {
+                    "added_columns": ["new_feature_flag"],
+                    "removed_columns": [],
+                    "type_changes": [
+                        {
+                            "column": "price",
+                            "old_type": "float",
+                            "new_type": "double"
+                        }
+                    ]
+                },
+                "file_changes": {
+                    "file_count_change": 15,
+                    "size_change_bytes": 234567890
+                }
+            }
+        }
+

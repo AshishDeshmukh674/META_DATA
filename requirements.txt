@@ -12,13 +12,14 @@ s3fs==2024.2.0
 pyarrow==15.0.0
 pandas==2.2.0
 
-# Apache Spark (local mode)
-pyspark==3.5.0
+# Apache Spark (local mode - Phase 6&7)
+# NOTE: Connects to Spark cluster running in Docker (see docker-compose.yml)
+pyspark==3.5.1  # Matches Docker apache/spark:3.5.1 image
 
-# Trino Client
-trino==0.327.0
+# Delta Lake for Spark (Phase 6)
+delta-spark==3.2.0  # Compatible with Spark 3.5.x
 
-# Delta Lake
+# Delta Lake Python library (Phase 5 metadata reading)
 deltalake==0.15.0
 
 # Configuration & Environment

@@ -240,14 +240,32 @@ class FormatDetector:
     def _list_files(self, client: boto3.client, max_keys: int = 1000) -> List[str]:
         """
         List all files at the table path.
+        Handles both directory paths and direct file paths.
         
         Returns:
             List of file keys (paths)
         """
-        prefix = self.path + "/" if self.path else ""
         files = []
         
         try:
+            # Check if path points directly to a file (has known extension)
+            file_extensions = ['.csv', '.json', '.parquet', '.avro', '.orc', '.snappy']
+            is_file_path = any(self.path.lower().endswith(ext) for ext in file_extensions)
+            
+            if is_file_path:
+                # Direct file path - check if this specific file exists
+                try:
+                    client.head_object(Bucket=self.bucket, Key=self.path)
+                    return [self.path]  # File exists, return it
+                except ClientError:
+                    # File doesn't exist, try listing with parent directory
+                    parent_path = "/".join(self.path.split("/")[:-1])
+                    prefix = parent_path + "/" if parent_path else ""
+            else:
+                # Directory path - list all files
+                prefix = self.path + "/" if self.path else ""
+            
+            # List objects with prefix
             paginator = client.get_paginator('list_objects_v2')
             pages = paginator.paginate(
                 Bucket=self.bucket,
@@ -345,3 +363,103 @@ class FormatDetector:
                 markers.append(f"{len(commit_files)} commit files")
         
         return markers if markers else None
+
+    def detect_raw_data(self) -> Tuple[bool, Dict[str, Any]]:
+        """
+        Detect raw data files (CSV, JSON, Parquet) that can be converted to lakehouse formats.
+        
+        Returns:
+            Tuple of (success: bool, result: dict)
+        """
+        logger.info(
+            "Detecting raw data files",
+            extra={"bucket": self.bucket, "path": self.path}
+        )
+        
+        try:
+            client = self.create_client()
+            files = self._list_files(client)
+            
+            if not files:
+                return False, {
+                    "success": False,
+                    "format": "none",
+                    "message": "No files found at path"
+                }
+            
+            # Classify files by extension
+            csv_files = [f for f in files if f.lower().endswith('.csv')]
+            json_files = [f for f in files if f.lower().endswith('.json')]
+            parquet_files = [f for f in files if f.lower().endswith('.parquet')]
+            avro_files = [f for f in files if f.lower().endswith('.avro')]
+            orc_files = [f for f in files if f.lower().endswith('.orc')]
+            
+            # Determine primary format (most files)
+            format_counts = {
+                "csv": len(csv_files),
+                "json": len(json_files),
+                "parquet": len(parquet_files),
+                "avro": len(avro_files),
+                "orc": len(orc_files)
+            }
+            
+            # Filter out zeros and get max
+            non_zero = {k: v for k, v in format_counts.items() if v > 0}
+            
+            if not non_zero:
+                return False, {
+                    "success": False,
+                    "format": "unsupported",
+                    "message": "No supported raw data files found (CSV/JSON/Parquet/Avro/ORC)"
+                }
+            
+            primary_format = max(non_zero, key=non_zero.get)
+            
+            return True, {
+                "success": True,
+                "format": primary_format,
+                "is_raw_data": True,
+                "file_counts": format_counts,
+                "sample_files": files[:5],
+                "message": f"Found {non_zero[primary_format]} {primary_format.upper()} files"
+            }
+            
+        except Exception as e:
+            logger.error(f"Raw data detection failed: {e}", exc_info=True)
+            return False, {
+                "success": False,
+                "format": "error",
+                "message": str(e)
+            }
+    
+    def check_format_exists(self, target_format: str) -> bool:
+        """
+        Check if a specific lakehouse format exists at the path.
+        
+        Args:
+            target_format: "delta", "iceberg", or "hudi"
+            
+        Returns:
+            True if format exists, False otherwise
+        """
+        logger.info(f"Checking if {target_format} table exists at {self.path}")
+        
+        try:
+            client = self.create_client()
+            files = self._list_files(client)
+            
+            if not files:
+                return False
+            
+            if target_format == "delta":
+                return self._check_delta(files) is not None
+            elif target_format == "iceberg":
+                return self._check_iceberg(files) is not None
+            elif target_format == "hudi":
+                return self._check_hudi(files) is not None
+            else:
+                return False
+                
+        except Exception as e:
+            logger.error(f"Format existence check failed: {e}")
+            return False

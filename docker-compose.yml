@@ -1,52 +1,78 @@
+# Docker Compose for Lakehouse Explorer
+# 
+# Phase 6: Spark cluster for metadata extraction
+# Phase 7: Will add MinIO for local S3-compatible storage
+#
+# To start services: docker-compose up -d
+# To stop services: docker-compose down
+# To view Spark UI: http://localhost:8081
+
 version: '3.8'
 
 services:
-  # MinIO - S3-compatible object storage for local development
-  minio:
-    image: minio/minio:latest
-    container_name: lakehouse-minio
-    ports:
-      - "9000:9000"      # API
-      - "9001:9001"      # Console UI
+  # Spark Master
+  spark-master:
+    image: apache/spark:3.5.1
+    container_name: spark-master
+    hostname: spark-master
+    entrypoint: ['/opt/spark/bin/spark-class', 'org.apache.spark.deploy.master.Master']
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
-    command: server /data --console-address ":9001"
-    volumes:
-      - minio-data:/data
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      - SPARK_NO_DAEMONIZE=true
+    ports:
+      - "7077:7077"   # Spark master port
+      - "8081:8080"   # Spark master UI (mapped to 8081 to avoid conflicts)
     networks:
       - lakehouse-network
-
-  # Trino - Distributed SQL query engine (READ operations)
-  trino:
-    image: trinodb/trino:latest
-    container_name: lakehouse-trino
-    ports:
-      - "8080:8080"      # Trino UI & API
-    environment:
-      - CATALOG_MANAGEMENT=dynamic
     volumes:
-      - ./config/trino/catalog:/etc/trino/catalog
-      - ./config/trino/config.properties:/etc/trino/config.properties
+      - spark-master-data:/opt/spark/work-dir
+
+  # Spark Worker
+  spark-worker:
+    image: apache/spark:3.5.1
+    container_name: spark-worker
+    hostname: spark-worker
+    entrypoint: ['/opt/spark/bin/spark-class', 'org.apache.spark.deploy.worker.Worker', 'spark://spark-master:7077']
+    environment:
+      - SPARK_NO_DAEMONIZE=true
+      - SPARK_WORKER_MEMORY=2G
+      - SPARK_WORKER_CORES=2
     depends_on:
-      - minio
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/v1/info"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
+      - spark-master
     networks:
       - lakehouse-network
+    volumes:
+      - spark-worker-data:/opt/spark/work-dir
 
-volumes:
-  minio-data:
-    driver: local
+  # FastAPI Application
+  fastapi:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: lakehouse-api
+    hostname: lakehouse-api
+    environment:
+      # AWS Configuration (from .env file, but can be overridden)
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_REGION=${AWS_REGION:-us-east-1}
+      # Spark Configuration
+      - SPARK_MASTER_URL=spark://spark-master:7077
+    ports:
+      - "8000:8000"
+    depends_on:
+      - spark-master
+      - spark-worker
+    networks:
+      - lakehouse-network
+    volumes:
+      - ./app:/app/app:ro  # Mount app code for development (read-only)
+    restart: unless-stopped
 
 networks:
   lakehouse-network:
     driver: bridge
+
+volumes:
+  spark-master-data:
+  spark-worker-data:
+
