@@ -22,7 +22,7 @@ from app.metadata.parquet_reader import ParquetReader
 from app.core.logger import get_logger
 
 logger = get_logger()
-router = APIRouter(prefix="/metadata", tags=["metadata"])
+router = APIRouter(prefix="/metadata")
 
 
 def get_reader(format: str, bucket: str, path: str, storage_type: str):

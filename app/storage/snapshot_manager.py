@@ -222,6 +222,46 @@ class SnapshotManager:
             logger.error(f"Failed to get latest snapshot: {e}", exc_info=True)
             return None
     
+    def get_snapshot_by_id(
+        self,
+        storage_type: str,
+        bucket: str,
+        path: str,
+        snapshot_id: str
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Get a specific snapshot by its ID.
+        
+        Args:
+            storage_type: "aws" or "minio"
+            bucket: S3 bucket name
+            path: Path to table within bucket
+            snapshot_id: Snapshot ID to retrieve
+            
+        Returns:
+            Metadata dictionary or None if snapshot not found
+        """
+        try:
+            logger.info(f"Retrieving snapshot: {snapshot_id}")
+            
+            snapshot_data = self._load_snapshot_content(
+                storage_type,
+                bucket,
+                path,
+                snapshot_id
+            )
+            
+            if snapshot_data:
+                logger.info(f"Retrieved snapshot: {snapshot_id}")
+            else:
+                logger.warning(f"Snapshot not found: {snapshot_id}")
+            
+            return snapshot_data
+            
+        except Exception as e:
+            logger.error(f"Failed to get snapshot {snapshot_id}: {e}", exc_info=True)
+            return None
+    
     def list_snapshots(
         self,
         storage_type: str,
