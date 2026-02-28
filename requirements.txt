@@ -25,6 +25,9 @@ deltalake==0.15.0
 # Trino Query Engine (Phase 7 read queries)
 trino==0.328.0
 
+# LLM & AI (Phase 7.5 - Natural Language Queries)
+groq==0.4.2
+
 # Configuration & Environment
 python-dotenv==1.0.0
 

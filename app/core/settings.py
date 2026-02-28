@@ -13,6 +13,11 @@ Why Pydantic Settings?
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Optional
+from pathlib import Path
+
+# Get the project root directory (2 levels up from this file)
+PROJECT_ROOT = Path(__file__).parent.parent.parent
+ENV_FILE = PROJECT_ROOT / ".env"
 
 
 class Settings(BaseSettings):
@@ -63,6 +68,12 @@ class Settings(BaseSettings):
     spark_driver_memory: str = "2g"
     spark_executor_memory: str = "2g"
     
+    # ===== LLM Configuration (Natural Language Queries) =====
+    groq_api_key: Optional[str] = None
+    groq_model: str = "llama-3.3-70b-versatile"  # Fast and accurate
+    groq_temperature: float = 0.1  # Low temperature for consistent SQL generation
+    groq_max_tokens: int = 2000
+    
     # ===== Security =====
     secret_key: str = "dev-secret-key-change-in-production"
     
@@ -72,11 +83,24 @@ class Settings(BaseSettings):
     enable_metrics: bool = True
     
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=str(ENV_FILE),
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore"  # Ignore unknown env vars
     )
+    
+    def model_post_init(self, __context) -> None:
+        """Log settings after initialization."""
+        import sys
+        print(f"[SETTINGS DEBUG] ENV_FILE path: {ENV_FILE}", file=sys.stderr)
+        print(f"[SETTINGS DEBUG] ENV_FILE exists: {ENV_FILE.exists()}", file=sys.stderr)
+        print(f"[SETTINGS DEBUG] Instance ID: {id(self)}", file=sys.stderr)
+        print(f"[SETTINGS DEBUG] Groq API Key loaded: {bool(self.groq_api_key)}", file=sys.stderr)
+        if self.groq_api_key:
+            print(f"[SETTINGS DEBUG] Key prefix: {self.groq_api_key[:20]}...", file=sys.stderr)
+            print(f"[SETTINGS DEBUG] Key length: {len(self.groq_api_key)}", file=sys.stderr)
+        else:
+            print(f"[SETTINGS DEBUG] API key is NONE!", file=sys.stderr)
     
     def get_allowed_origins_list(self) -> list[str]:
         """Convert comma-separated origins to list."""

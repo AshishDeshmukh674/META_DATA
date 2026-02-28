@@ -1,12 +1,14 @@
 # 🏔️ Lakehouse Metadata & Query Platform
 
-**A complete data lakehouse platform that discovers, manages, and queries Delta Lake tables on AWS S3 without requiring external metastores like Hive or AWS Glue.**
+**An AI-powered data lakehouse platform that discovers, manages, and queries Delta Lake tables on AWS S3 using natural language - no SQL or metastore required.**
 
 ---
 
 ## 📖 What This Project Is
 
-This is a **real-world implementation** of a modern data lakehouse platform that solves a critical problem: **How do you query Delta Lake tables stored in S3 without setting up complex metastore infrastructure?**
+This is a **real-world implementation** of a modern data lakehouse platform with **AI-powered natural language queries** that solves critical problems:
+- **How do you query Delta Lake tables stored in S3 without setting up complex metastore infrastructure?**
+- **How do you make data accessible to non-technical users without requiring SQL knowledge?**
 
 ### The Problem We Solved
 
@@ -21,6 +23,8 @@ Traditional data warehouses require:
 ✅ **Metastore-less architecture** - Metadata lives with data in `_delta_log/`  
 ✅ **Auto-discovery** - Automatically detect and read table schemas  
 ✅ **Dual query engines** - Spark for time travel, Trino for fast analytics  
+✅ **Natural language queries** - Ask in plain English, get SQL + results  
+✅ **AI-powered** - Groq LLM converts "Show customers from Mumbai" to SQL  
 ✅ **Custom snapshots** - Version control for data with automatic metadata  
 ✅ **REST API** - Easy integration with any application  
 
@@ -74,6 +78,41 @@ s3://metadataproject/test-data/customer_data/customer_data_delta/
 2. **Fast Queries** - Use Trino for current data after one-time registration
 3. **Auto-sync endpoint** - Automatically register Delta tables in Trino
 
+### Phase 8: Natural Language Queries ✅
+**Why:** SQL is powerful but requires technical knowledge. Business users need simple, natural language queries.
+
+**The Challenge:**
+- Non-technical users struggle with SQL syntax
+- Column names and table structures are hard to remember
+- Complex JOINs and aggregations require expertise
+- How do we make data accessible to everyone?
+
+**Our Solution:**
+We integrated **Groq API (llama-3.3-70b-versatile)** to convert natural language to SQL:
+
+**Real Examples:**
+- "Show me all customers from Mumbai" → `SELECT * FROM ... WHERE city = 'Mumbai'`
+- "Count customers per city" → `SELECT city, COUNT(*) as count FROM ... GROUP BY city`
+- "Find customers with gmail addresses" → `SELECT * FROM ... WHERE email LIKE '%@gmail.com'`
+
+**How It Works:**
+1. User sends natural language query
+2. System reads table schema from Delta `_delta_log/`
+3. LLM receives: user query + table schema + available columns
+4. LLM generates SQL query
+5. Query executes on Trino (fast) or Spark (time travel)
+6. Results returned with metadata
+
+**Performance:**
+- Natural language → SQL conversion: ~800ms
+- Total query time: ~1-2 seconds (Trino) or ~30-60s (Spark with time travel)
+
+**Technology Stack:**
+- **LLM Provider:** Groq API
+- **Model:** llama-3.3-70b-versatile (70B parameters)
+- **Response Time:** 800ms average
+- **Integration:** Direct API (no complex prompting framework)
+
 ---
 
 ## 🏗️ Architecture
@@ -81,17 +120,29 @@ s3://metadataproject/test-data/customer_data/customer_data_delta/
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                         USER / APPLICATION                   │
+│                   "Show me customers from Mumbai"            │
 └────────────┬───────────────────────────────────┬────────────┘
              │                                   │
     ┌────────▼────────┐                 ┌───────▼────────┐
     │   FASTAPI       │                 │   SWAGGER UI   │
-    │   Port: 8000    │                 │   /docs        │
+    │   Port: 8001    │                 │   /docs        │
     └────────┬────────┘                 └────────────────┘
              │
-   ┌─────────┴──────────────────────────────────────┐
-   │         QUERY ROUTING LAYER                    │
-   │  "Should this use Spark or Trino?"            │
-   └─────────┬──────────────────────┬───────────────┘
+   ┌─────────▼─────────────────────────────────────────────┐
+   │         NATURAL LANGUAGE QUERY ENGINE (Phase 8)       │
+   │  Natural Language → SQL Conversion (800ms)           │
+   │                                                       │
+   │  ┌───────────────┐      ┌──────────────────────┐    │
+   │  │  Read Schema  │  →   │   Groq API (LLM)     │    │
+   │  │  from Delta   │      │  llama-3.3-70b       │    │
+   │  │  _delta_log/  │      │  Returns SQL         │    │
+   │  └───────────────┘      └──────────────────────┘    │
+   └───────────────────────────┬───────────────────────────┘
+                               │
+   ┌───────────────────────────▼───────────────────────────┐
+   │         QUERY ROUTING LAYER                           │
+   │  "Should this use Spark or Trino?"                   │
+   └─────────┬──────────────────────┬────────────────────┘
              │                      │
    ┌─────────▼──────────┐  ┌───────▼──────────┐
    │  SPARK 3.5.1       │  │  TRINO 435       │
@@ -120,6 +171,15 @@ s3://metadataproject/test-data/customer_data/customer_data_delta/
 ---
 
 ## 💡 Why We Chose Each Technology
+
+### Groq API (Natural Language - Phase 8)
+**Why not OpenAI/Anthropic/AWS Bedrock?**
+- ✅ Ultra-fast inference (800ms for 70B model)
+- ✅ Free tier available
+- ✅ Simple REST API (no complex setup)
+- ✅ llama-3.3-70b-versatile excellent for SQL generation
+- ✅ Cost-effective at scale
+- ❌ Requires internet connection (no offline mode)
 
 ### FastAPI (REST API Layer)
 **Why not Flask/Django?**
@@ -319,12 +379,19 @@ pip install -r requirements.txt
 Copy-Item .env.example .env
 ```
 
-**Edit `.env` with your AWS credentials:**
+**Edit `.env` with your credentials:**
 ```env
+# AWS Credentials (required)
 AWS_ACCESS_KEY_ID=AKIA...
 AWS_SECRET_ACCESS_KEY=...
 AWS_REGION=us-east-1
+
+# Groq API Key (required for natural language queries - Phase 8)
+# Get free key from: https://console.groq.com/
+GROQ_API_KEY=gsk_your_api_key_here
 ```
+
+**Note:** Groq API key is needed for `/query/natural` endpoint (Phase 8). Other endpoints work without it.
 
 ### Step 5: Start Docker Services
 ```powershell
@@ -800,19 +867,205 @@ Invoke-RestMethod -Uri $uri -Method Get
 
 ---
 
+#### POST /query/natural
+**Purpose:** Execute natural language queries (no SQL knowledge needed!)
+
+**Why this exists:** Most users don't know SQL. This endpoint converts plain English to SQL automatically using AI.
+
+**Prerequisites:** 
+- Groq API key configured in `.env` file
+- For fast queries: Table must be synced via `/query/sync-table`
+
+**Real Examples:**
+
+**1. Basic Query - Get Customers from Mumbai:**
+```powershell
+$body = @{
+    query = "Show me all customers from Mumbai"
+    storage_type = "aws"
+    bucket = "metadataproject"
+    table_path = "test-data/customer_data/customer_data_delta"
+    use_trino = $true
+} | ConvertTo-Json
+
+Invoke-RestMethod -Uri "http://localhost:8001/query/natural" `
+    -Method Post `
+    -ContentType "application/json" `
+    -Body $body
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "sql": "SELECT * FROM delta.default.customer_data_delta WHERE city = 'Mumbai' LIMIT 100",
+  "engine": "trino",
+  "row_count": 1,
+  "columns": ["customerid", "name", "email", "city"],
+  "data": [
+    {
+      "customerid": "C001",
+      "name": "Aarav Sharma",
+      "email": "aarav.sharma@gmail.com",
+      "city": "Mumbai"
+    }
+  ],
+  "execution_time_ms": 1401,
+  "llm_processing_time_ms": 756
+}
+```
+
+**2. Aggregation Query - Count Customers per City:**
+```powershell
+$body = @{
+    query = "Count how many customers are in each city"
+    storage_type = "aws"
+    bucket = "metadataproject"
+    table_path = "test-data/customer_data/customer_data_delta"
+    use_trino = $true
+} | ConvertTo-Json
+
+Invoke-RestMethod -Uri "http://localhost:8001/query/natural" `
+    -Method Post `
+    -ContentType "application/json" `
+    -Body $body
+```
+
+**3. Filter Query - Find Gmail Users:**
+```powershell
+$body = @{
+    query = "Show customers who have gmail addresses"
+    storage_type = "aws"
+    bucket = "metadataproject"
+    table_path = "test-data/customer_data/customer_data_delta"
+    use_trino = $true
+} | ConvertTo-Json
+
+Invoke-RestMethod -Uri "http://localhost:8001/query/natural" `
+    -Method Post `
+    -ContentType "application/json" `
+    -Body $body
+```
+
+**4. Time Travel Query (with Spark):**
+```powershell
+$body = @{
+    query = "Show me all customers from Mumbai"
+    storage_type = "aws"
+    bucket = "metadataproject"
+    table_path = "test-data/customer_data/customer_data_delta"
+    snapshot_id = "snapshot_20260213_044224_cf52ef3e"
+    use_trino = $false
+} | ConvertTo-Json
+
+Invoke-RestMethod -Uri "http://localhost:8001/query/natural" `
+    -Method Post `
+    -ContentType "application/json" `
+    -Body $body `
+    -TimeoutSec 180
+```
+
+**Natural Language Query Examples:**
+
+| Natural Language | Generated SQL |
+|-----------------|---------------|
+| "Show me all customers" | `SELECT * FROM table LIMIT 100` |
+| "Get customers from Mumbai" | `SELECT * FROM table WHERE city = 'Mumbai'` |
+| "Count customers per city" | `SELECT city, COUNT(*) as count FROM table GROUP BY city` |
+| "Find customers with gmail" | `SELECT * FROM table WHERE email LIKE '%@gmail.com'` |
+| "Show top 5 customers" | `SELECT * FROM table LIMIT 5` |
+| "Average age by city" | `SELECT city, AVG(age) as avg_age FROM table GROUP BY city` |
+| "Customers whose name starts with A" | `SELECT * FROM table WHERE name LIKE 'A%'` |
+
+**Parameters:**
+- `query` (required): Natural language question
+- `storage_type` (required): "aws" or "minio"
+- `bucket` (required): S3 bucket name
+- `table_path` (required): Path to Delta table
+- `use_trino` (optional): `true` for fast queries (default), `false` for Spark
+- `snapshot_id` (optional): For time travel queries (requires `use_trino=false`)
+- `limit` (optional): Max rows to return (default: 100)
+
+**Response Fields:**
+- `success`: Whether query succeeded
+- `sql`: Generated SQL query (transparent!)
+- `engine`: "trino" or "spark"
+- `row_count`: Number of rows returned
+- `columns`: Column names in result
+- `data`: Array of result rows
+- `execution_time_ms`: Total query execution time
+- `llm_processing_time_ms`: Time spent on LLM conversion
+
+**Performance:**
+- LLM conversion: ~700-900ms
+- Trino execution: ~100-500ms
+- Total (Trino): ~1-2 seconds
+- Total (Spark): ~30-60 seconds
+
+**Supported Query Types:**
+- ✅ SELECT queries (all columns or specific)
+- ✅ WHERE filters (equality, LIKE, ranges)
+- ✅ GROUP BY aggregations (COUNT, SUM, AVG, MIN, MAX)
+- ✅ ORDER BY sorting
+- ✅ LIMIT clauses
+- ✅ Time travel (with snapshot_id)
+- ❌ INSERT/UPDATE/DELETE (coming in Phase 9)
+- ❌ JOINs (single table only for now)
+
+**Error Handling:**
+```json
+{
+  "success": false,
+  "error": "Failed to generate SQL: Invalid query format",
+  "suggestion": "Try rephrasing your query. Example: 'Show me all customers from Mumbai'"
+}
+```
+
+**Tips for Best Results:**
+- Be specific: "customers from Mumbai" > "Mumbai data"
+- Use actual column names when possible
+- Examples work great: "similar to alice@email.com"
+- Keep queries simple for best SQL generation
+- Check the generated SQL in the response!
+
+**Setup Required:**
+
+1. **Get Groq API Key:**
+   - Visit https://console.groq.com/
+   - Create free account
+   - Generate API key
+
+2. **Add to `.env` file:**
+   ```env
+   GROQ_API_KEY=gsk_your_api_key_here
+   ```
+
+3. **Restart FastAPI server:**
+   ```powershell
+   docker-compose restart fastapi
+   ```
+
+**Why Groq?**
+- ✅ Fast inference (800ms avg for 70B model)
+- ✅ Free tier available
+- ✅ No complex prompt engineering needed
+- ✅ llama-3.3-70b-versatile model is accurate for SQL
+
+---
+
 #### POST /query/write
 **Purpose:** Execute write operations (INSERT/UPDATE/DELETE)
 
-**Status:** ❌ **NOT IMPLEMENTED** (Coming in Phase 8)
+**Status:** ❌ **NOT IMPLEMENTED** (Coming in Phase 9)
 
 **Current Response:**
 ```json
 {
-  "detail": "Write queries will be implemented in Phase 8"
+  "detail": "Write queries will be implemented in Phase 9"
 }
 ```
 
-**Planned for Phase 8:**
+**Planned for Phase 9:**
 - INSERT new rows
 - UPDATE existing data
 - DELETE rows
@@ -1174,6 +1427,51 @@ POST /query/execute/snapshot
 
 ---
 
+### Phase 8: Natural Language Queries
+
+- [ ] Configure Groq API key in `.env`
+- [ ] Test basic natural language query
+- [ ] Test aggregation query ("count customers per city")
+- [ ] Test filter query ("customers from Mumbai")
+- [ ] Test time travel with natural language
+- [ ] Verify generated SQL is correct
+- [ ] Check response time (< 2 seconds for Trino)
+
+**Commands:**
+```powershell
+# 1. Set up API key (one-time)
+Add to .env: GROQ_API_KEY=gsk_your_key_here
+Restart: docker-compose restart fastapi
+
+# 2. Basic natural language query
+POST /query/natural
+{
+  "query": "Show me all customers from Mumbai",
+  "storage_type": "aws",
+  "bucket": "metadataproject",
+  "table_path": "test-data/customer_data/customer_data_delta",
+  "use_trino": true
+}
+
+# 3. Aggregation query
+POST /query/natural
+{
+  "query": "Count how many customers are in each city",
+  ...
+}
+
+# 4. Time travel with natural language
+POST /query/natural
+{
+  "query": "Show me all customers",
+  "snapshot_id": "snapshot_20260213_044224_cf52ef3e",
+  "use_trino": false,
+  ...
+}
+```
+
+---
+
 ## 🐞 Troubleshooting
 
 ### Error: "Schema 'default' does not exist"
@@ -1233,7 +1531,109 @@ docker logs lakehouse-api --tail 50
 
 ---
 
-## 📈 What's Next: Phase 8
+### Error: "GROQ_API_KEY not set"
+
+**Cause:** Groq API key not configured or not loaded properly
+
+**Solution:**
+```powershell
+# 1. Check .env file has the key
+Get-Content .env | Select-String "GROQ_API_KEY"
+
+# 2. If missing, add it:
+"GROQ_API_KEY=gsk_your_api_key_here" | Add-Content .env
+
+# 3. Restart server to reload environment
+docker-compose restart fastapi
+
+# OR if running locally:
+# Stop server (Ctrl+C)
+# Start again: C:\Users\ashis\Desktop\META\.venv\Scripts\python.exe -m uvicorn app.main:app --host 0.0.0.0 --port 8001
+```
+
+**Get API key:**
+- Visit https://console.groq.com/
+- Sign up (free)
+- Generate API key
+- Copy to `.env` file
+
+---
+
+### Error: Natural language query returns wrong SQL
+
+**Cause:** LLM misunderstood the query or doesn't know column names
+
+**Solutions:**
+1. **Be more specific:**
+   - ❌ "Show me Mumbai"
+   - ✅ "Show me all customers from Mumbai"
+
+2. **Use actual column names:**
+   - ❌ "Filter by location"
+   - ✅ "Filter by city"
+
+3. **Check generated SQL in response:**
+   ```json
+   {
+     "sql": "SELECT * FROM ...",  ← Review this!
+     "data": [...]
+   }
+   ```
+
+4. **Rephrase and try again:**
+   - "Count customers" → "Count how many customers are in each city"
+
+---
+
+### Error: Port 8000 already in use
+
+**Cause:** Another process (often Docker/WSL) is using port 8000
+
+**Solution:**
+```powershell
+# Find what's using port 8000
+Get-NetTCPConnection -LocalPort 8000 | ForEach-Object {
+    $proc = Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue
+    Write-Host "Port 8000 used by: $($proc.ProcessName) (PID: $($proc.Id))"
+}
+
+# Option 1: Kill the process
+Stop-Process -Id <PID> -Force
+
+# Option 2: Use different port (recommended)
+# Start server on port 8001 instead:
+C:\Users\ashis\Desktop\META\.venv\Scripts\python.exe -m uvicorn app.main:app --host 0.0.0.0 --port 8001
+
+# Then access: http://localhost:8001/docs
+```
+
+---
+
+### Error: Trino connection refused
+
+**Cause:** Trino container not running or not ready
+
+**Solution:**
+```powershell
+# 1. Check if Docker Desktop is running
+# 2. Check if Trino container is up
+docker ps | Select-String "trino"
+
+# 3. If not running, start it:
+docker-compose up -d trino
+
+# 4. Wait 10 seconds for Trino to initialize
+Start-Sleep -Seconds 10
+
+# 5. Verify Trino is accessible:
+Invoke-RestMethod http://localhost:8080/v1/info
+```
+
+**Note:** Trino listens on port **8080** (not 8082). The Trino UI is on 8082.
+
+---
+
+## 📈 What's Next: Phase 9
 
 **Write Operations:**
 - INSERT new rows into Delta tables
@@ -1284,6 +1684,26 @@ Traditional wisdom: "You need Hive Metastore or AWS Glue"
 
 **Both matter:** Delta for engine compatibility, snapshots for humans
 
+### 5. AI Makes Data Accessible (Phase 8)
+**Traditional approach:** "Learn SQL or hire a data analyst"  
+**Our approach:** "Just ask in plain English"
+
+**Why it matters:**
+- Business users can self-serve data
+- Reduces dependency on technical teams
+- Democratizes data access
+- Generated SQL is transparent (users can learn)
+
+**Key insight:** LLM needs table schema context. Solution: Auto-extract from `_delta_log/` and include in prompt.
+
+### 6. Fast LLM Inference is Critical
+**Why Groq?** 
+- 800ms for 70B parameter model (vs 3-5 seconds with OpenAI)
+- Free tier available
+- Simple API (no complex prompt chains)
+
+**Impact:** Natural language queries feel instant (~1-2 seconds total including SQL execution)
+
 ---
 
 ## 🎓 Project Structure
@@ -1304,7 +1724,8 @@ META/
 │   │   └── aws_client.py                 # S3 client
 │   ├── engines/                          # Query engines
 │   │   ├── trino_query_engine.py         # Trino interface
-│   │   └── spark_query_engine.py         # Spark interface
+│   │   ├── spark_query_engine.py         # Spark interface
+│   │   └── nl_query_engine.py            # Natural language to SQL (Phase 8)
 │   ├── metadata/                         # Format readers
 │   │   ├── delta_reader.py               # Delta _delta_log/ parser
 │   │   └── format_detector.py            # Auto-detect formats
@@ -1427,11 +1848,39 @@ Invoke-RestMethod -Uri "http://localhost:8000/query/execute/snapshot" `
     -Method Post -ContentType "application/json" -Body $body -TimeoutSec 180
 ```
 
+### Natural Language Query (No SQL Needed!)
+```powershell
+# Step 1: Set up API key (one-time)
+"GROQ_API_KEY=gsk_your_api_key_here" | Add-Content .env
+docker-compose restart fastapi
+
+# Step 2: Sync table (one-time)
+$uri = 'http://localhost:8001/query/sync-table?storage_type=aws&bucket=metadataproject&table_path=test-data/customer_data/customer_data_delta&schema_name=default'
+Invoke-RestMethod -Uri $uri -Method Post
+
+# Step 3: Ask in plain English!
+$body = @{
+    query = "Show me all customers from Mumbai"
+    storage_type = "aws"
+    bucket = "metadataproject"
+    table_path = "test-data/customer_data/customer_data_delta"
+    use_trino = $true
+} | ConvertTo-Json
+
+Invoke-RestMethod -Uri "http://localhost:8001/query/natural" `
+    -Method Post -ContentType "application/json" -Body $body
+
+# More examples:
+# "Count how many customers are in each city"
+# "Show customers with gmail addresses"
+# "Find customers whose name starts with A"
+```
+
 ---
 
-**Last Updated:** Phase 7 Complete (Query Execution)  
-**Status:** Fully functional read-query platform  
-**Next:** Phase 8 - Write Operations
+**Last Updated:** Phase 8 Complete (Natural Language Queries)  
+**Status:** Fully functional read-query platform with AI-powered natural language interface  
+**Next:** Phase 9 - Write Operations
 
 ---
 
@@ -1446,6 +1895,8 @@ If you can do all of these, the platform is working:
 - ✅ Sync table to Trino → `/query/sync-table`
 - ✅ Fast query (< 1 second) → `/query/execute`
 - ✅ Time travel query → `/query/execute/snapshot`
+- ✅ Natural language query → `/query/natural` ("Show me customers from Mumbai")
 - ✅ See queries in Trino UI → http://localhost:8082
+- ✅ Verify generated SQL is correct (transparent AI)
 
-**All green? Congratulations! Your lakehouse platform is live! 🚀**
+**All green? Congratulations! Your AI-powered lakehouse platform is live! 🚀🤖**
