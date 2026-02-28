@@ -40,7 +40,7 @@ class Settings(BaseSettings):
     api_host: str = "0.0.0.0"
     api_port: int = 8000
     api_reload: bool = True
-    allowed_origins: str = "http://localhost:3000,http://localhost:8000"
+    allowed_origins: str = "http://localhost:3000,http://localhost:3001,http://localhost:3002,http://localhost:3003,http://localhost:3004,http://localhost:8000"
     
     # ===== AWS Credentials =====
     # These will be validated when user calls /connect/aws endpoint
@@ -64,9 +64,12 @@ class Settings(BaseSettings):
     
     # ===== Spark Configuration =====
     spark_master: str = "local[*]"
+    spark_master_url: Optional[str] = None
     spark_app_name: str = "LakehouseExplorer"
     spark_driver_memory: str = "2g"
     spark_executor_memory: str = "2g"
+    java_home: Optional[str] = None
+    hadoop_home: Optional[str] = None
     
     # ===== LLM Configuration (Natural Language Queries) =====
     groq_api_key: Optional[str] = None

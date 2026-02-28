@@ -77,7 +77,7 @@ def create_application() -> FastAPI:
     # 1. CORS - Allow frontend to call API
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=settings.get_allowed_origins_list(),
+        allow_origins=["*"],  # Allow all origins in development
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

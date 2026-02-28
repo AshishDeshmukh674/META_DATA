@@ -40,6 +40,7 @@ Usage:
 
 import json
 import boto3
+from botocore.config import Config
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 
@@ -72,12 +73,20 @@ class SnapshotManager:
         Returns:
             boto3 S3 client
         """
+        # Configure timeouts to prevent hanging
+        config = Config(
+            connect_timeout=5,  # 5 seconds to establish connection
+            read_timeout=10,    # 10 seconds to read response  
+            retries={'max_attempts': 2}  # Retry twice on failure
+        )
+        
         if storage_type == "aws":
             return boto3.client(
                 's3',
                 aws_access_key_id=settings.aws_access_key_id,
                 aws_secret_access_key=settings.aws_secret_access_key,
-                region_name=settings.aws_region
+                region_name=settings.aws_region,
+                config=config
             )
         elif storage_type == "minio":
             return boto3.client(
@@ -85,7 +94,8 @@ class SnapshotManager:
                 endpoint_url=settings.minio_endpoint,
                 aws_access_key_id=settings.minio_access_key,
                 aws_secret_access_key=settings.minio_secret_key,
-                region_name='us-east-1'  # MinIO doesn't care about region
+                region_name='us-east-1',  # MinIO doesn't care about region
+                config=config
             )
         else:
             raise ValueError(f"Unsupported storage type: {storage_type}")
