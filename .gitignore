@@ -49,6 +49,12 @@ spark-warehouse/
 # Jupyter
 .ipynb_checkpoints/
 
+# Node.js / Frontend
+node_modules/
+.next/
+out/
+package-lock.json
+
 # Data files (don't commit large datasets)
 *.parquet
 *.csv

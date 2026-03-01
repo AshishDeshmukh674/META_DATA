@@ -46,13 +46,17 @@ class NaturalLanguageQueryEngine:
         if api_key:
             print(f"[NL ENGINE DEBUG] Key prefix: {api_key[:20]}...", flush=True)
         
+        # TEMPORARY: Hardcode API key for testing
+        if not api_key:
+            api_key = "put your_groq_api_key_here_for_testing"
+            print(f"[NL ENGINE DEBUG] Using hardcoded API key for testing!", flush=True)
+        
         logger.info(f"Initializing Groq client with key: {api_key[:15] if api_key else 'NONE'}...")
         
         if not api_key:
             raise ValueError(
                 "GROQ_API_KEY not set. Add it to .env file:\n"
-                "GROQ_API_KEY=your_api_key_here\n\n"
-                "Get your free API key from: https://console.groq.com/"
+                "GROQ_API_KEY=your_api_key_here"
             )
         
         self.client = Groq(api_key=api_key)

@@ -1,54 +1,73 @@
 'use client';
 
-import React, { useState } from 'react';
-import { Navigation } from '@/components/navigation';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { useState } from 'react';
+import toast from 'react-hot-toast';
+import { 
+  Database, 
+  FileText, 
+  GitBranch, 
+  FolderTree, 
+  FileCode, 
+  GitCompare,
+  Sparkles
+} from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { LoadingCard } from '@/components/ui/loading';
-import { generateMetadata } from '@/lib/api/queries';
-import { TableProperties, FileText, FolderOpen, CheckCircle2, Info, Layers } from 'lucide-react';
-import toast from 'react-hot-toast';
+import { Textarea } from '@/components/ui/textarea';
+import { Loading } from '@/components/ui/loading';
+import { Alert } from '@/components/ui/alert';
+import { CodeBlock } from '@/components/code-block';
+import { DataTable } from '@/components/data-table';
+import Navigation from '@/components/navigation';
+import {
+  generateMetadata,
+  getSchema,
+  getPartitions,
+  getSnapshots as getSnapshotsAPI,
+  getFiles,
+  compareSnapshots,
+  listSnapshots
+} from '@/lib/api/queries';
 
-const examplePaths = [
-  {
-    label: 'AWS S3 CSV',
-    path: 'raw/customers.csv',
-    storage: 'aws' as const,
-    bucket: 'my-lakehouse-bucket',
-  },
-  {
-    label: 'MinIO CSV',
-    path: 'data/customers.csv',
-    storage: 'minio' as const,
-    bucket: 'lakehouse',
-  },
-];
+type TabType = 'generate' | 'schema' | 'partitions' | 'snapshots' | 'files' | 'diff';
 
 export default function MetadataPage() {
-  const [csvPath, setCsvPath] = useState('raw/customers.csv');
-  const [storageType, setStorageType] = useState('aws');
-  const [bucketName, setBucketName] = useState('my-lakehouse-bucket');
+  const [activeTab, setActiveTab] = useState<TabType>('generate');
+  
+  // Common inputs
+  const [storageType, setStorageType] = useState<'aws' | 'minio'>('aws');
+  const [bucketName, setBucketName] = useState('metadataproject');
+  const [tablePath, setTablePath] = useState('test-data/customer_data/customer_data_delta');
+  const [tableFormat, setTableFormat] = useState<'delta' | 'iceberg' | 'hudi' | 'parquet' | ''>('');
+  
+  // Generate tab specific
+  const [csvPath, setCsvPath] = useState('test-data/customer_data/customer_data.csv');
   const [forceRefresh, setForceRefresh] = useState(false);
   
+  // Diff tab specific
+  const [snapshotId1, setSnapshotId1] = useState('');
+  const [snapshotId2, setSnapshotId2] = useState('');
+  const [availableSnapshots, setAvailableSnapshots] = useState<any[]>([]);
+  
+  // Loading and results
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<any>(null);
   const [error, setError] = useState('');
+  const [result, setResult] = useState<any>(null);
 
-  const handleLoadExample = (example: typeof examplePaths[0]) => {
-    setCsvPath(example.path);
-    setStorageType(example.storage);
-    setBucketName(example.bucket);
-    toast.success('Example loaded!');
-  };
+  const tabs = [
+    { id: 'generate' as TabType, label: 'Generate Metadata', icon: Sparkles, description: 'Convert CSV to Delta and generate metadata' },
+    { id: 'schema' as TabType, label: 'Schema', icon: FileCode, description: 'View table schema and column types' },
+    { id: 'partitions' as TabType, label: 'Partitions', icon: FolderTree, description: 'View table partitioning info' },
+    { id: 'snapshots' as TabType, label: 'Versions', icon: GitBranch, description: 'View table version history' },
+    { id: 'files' as TabType, label: 'Files', icon: FileText, description: 'List data files in the table' },
+    { id: 'diff' as TabType, label: 'Compare Snapshots', icon: GitCompare, description: 'Compare two metadata snapshots' },
+  ];
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
+  const handleGenerate = async () => {
     if (!csvPath.trim()) {
-      toast.error('Please enter a CSV file path');
+      toast.error('Please enter a file path');
       return;
     }
 
@@ -58,7 +77,7 @@ export default function MetadataPage() {
 
     try {
       const response = await generateMetadata({
-        storage_type: storageType as 'aws' | 'minio',
+        storage_type: storageType,
         bucket: bucketName,
         path: csvPath,
         table_format: 'delta',
@@ -66,7 +85,7 @@ export default function MetadataPage() {
       });
 
       setResult(response);
-      toast.success(`Metadata generated successfully! ${response.snapshot_id} created`);
+      toast.success(`Metadata generated! Snapshot: ${response.snapshot_id}`);
     } catch (err: any) {
       const errorMsg = err.response?.data?.detail || err.message || 'Metadata generation failed';
       setError(errorMsg);
@@ -76,330 +95,541 @@ export default function MetadataPage() {
     }
   };
 
+  const handleGetSchema = async () => {
+    if (!tablePath.trim()) {
+      toast.error('Please enter a table path');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+    setResult(null);
+
+    try {
+      const response = await getSchema({
+        storage_type: storageType,
+        bucket: bucketName,
+        path: tablePath,
+        format: tableFormat || undefined,
+      });
+
+      setResult(response);
+      toast.success('Schema retrieved successfully!');
+    } catch (err: any) {
+      const errorMsg = err.response?.data?.detail || err.message || 'Failed to get schema';
+      setError(errorMsg);
+      toast.error(errorMsg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGetPartitions = async () => {
+    if (!tablePath.trim()) {
+      toast.error('Please enter a table path');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+    setResult(null);
+
+    try {
+      const response = await getPartitions({
+        storage_type: storageType,
+        bucket: bucketName,
+        path: tablePath,
+        format: tableFormat || undefined,
+      });
+
+      setResult(response);
+      toast.success('Partitions retrieved successfully!');
+    } catch (err: any) {
+      const errorMsg = err.response?.data?.detail || err.message || 'Failed to get partitions';
+      setError(errorMsg);
+      toast.error(errorMsg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGetSnapshots = async () => {
+    if (!tablePath.trim()) {
+      toast.error('Please enter a table path');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+    setResult(null);
+
+    try {
+      const response = await getSnapshotsAPI({
+        storage_type: storageType,
+        bucket: bucketName,
+        path: tablePath,
+        format: tableFormat || undefined,
+      });
+
+      setResult(response);
+      toast.success('Snapshots retrieved successfully!');
+    } catch (err: any) {
+      const errorMsg = err.response?.data?.detail || err.message || 'Failed to get snapshots';
+      setError(errorMsg);
+      toast.error(errorMsg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGetFiles = async () => {
+    if (!tablePath.trim()) {
+      toast.error('Please enter a table path');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+    setResult(null);
+
+    try {
+      const response = await getFiles({
+        storage_type: storageType,
+        bucket: bucketName,
+        path: tablePath,
+        format: tableFormat || undefined,
+      });
+
+      setResult(response);
+      toast.success('Files retrieved successfully!');
+    } catch (err: any) {
+      const errorMsg = err.response?.data?.detail || err.message || 'Failed to get files';
+      setError(errorMsg);
+      toast.error(errorMsg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleLoadSnapshots = async () => {
+    if (!tablePath.trim()) {
+      toast.error('Please enter a table path');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const response = await listSnapshots(storageType, bucketName, tablePath);
+      setAvailableSnapshots(response.snapshots || []);
+      toast.success(`Loaded ${response.snapshots?.length || 0} snapshots`);
+    } catch (err: any) {
+      toast.error('Failed to load snapshots');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCompareSnapshots = async () => {
+    if (!tablePath.trim() || !snapshotId1 || !snapshotId2) {
+      toast.error('Please enter table path and select two snapshots');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+    setResult(null);
+
+    try {
+      const response = await compareSnapshots({
+        storage_type: storageType,
+        bucket: bucketName,
+        path: tablePath,
+        snapshot_id_1: snapshotId1,
+        snapshot_id_2: snapshotId2,
+      });
+
+      setResult(response);
+      toast.success('Snapshots compared successfully!');
+    } catch (err: any) {
+      const errorMsg = err.response?.data?.detail || err.message || 'Failed to compare snapshots';
+      setError(errorMsg);
+      toast.error(errorMsg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const renderCommonInputs = () => (
+    <>
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label htmlFor="storageType">Storage Type</Label>
+          <select
+            id="storageType"
+            value={storageType}
+            onChange={(e) => setStorageType(e.target.value as 'aws' | 'minio')}
+            className="w-full rounded-md border border-input bg-background px-3 py-2"
+          >
+            <option value="aws">AWS S3</option>
+            <option value="minio">MinIO</option>
+          </select>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="bucketName">Bucket Name</Label>
+          <Input
+            id="bucketName"
+            value={bucketName}
+            onChange={(e) => setBucketName(e.target.value)}
+            placeholder="my-bucket"
+          />
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="tableFormat">
+          Table Format <span className="text-muted-foreground text-sm">(optional - auto-detect if empty)</span>
+        </Label>
+        <select
+          id="tableFormat"
+          value={tableFormat}
+          onChange={(e) => setTableFormat(e.target.value as any)}
+          className="w-full rounded-md border border-input bg-background px-3 py-2"
+        >
+          <option value="">Auto-detect</option>
+          <option value="delta">Delta Lake</option>
+          <option value="iceberg">Apache Iceberg</option>
+          <option value="hudi">Apache Hudi</option>
+          <option value="parquet">Parquet</option>
+        </select>
+      </div>
+    </>
+  );
+
+  const renderTabContent = () => {
+    switch (activeTab) {
+      case 'generate':
+        return (
+          <div className="space-y-4">
+            <Alert>
+              <p className="text-sm">
+                <strong>Generate Metadata:</strong> Convert CSV files to Delta Lake format and generate a metadata snapshot.
+                The snapshot includes schema, partitions,files, and version information.
+              </p>
+            </Alert>
+
+            {renderCommonInputs()}
+
+            <div className="space-y-2">
+              <Label htmlFor="csvPath">CSV File Path</Label>
+              <Input
+                id="csvPath"
+                value={csvPath}
+                onChange={(e) => setCsvPath(e.target.value)}
+                placeholder="path/to/file.csv"
+              />
+              <p className="text-xs text-muted-foreground">
+                Path to the CSV file within your bucket (e.g., test-data/customer_data/customer_data.csv)
+              </p>
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <input
+                type="checkbox"
+                id="forceRefresh"
+                checked={forceRefresh}
+                onChange={(e) => setForceRefresh(e.target.checked)}
+                className="rounded"
+              />
+              <Label htmlFor="forceRefresh" className="cursor-pointer">
+                Force refresh (regenerate even if snapshot exists)
+              </Label>
+            </div>
+
+            <Button onClick={handleGenerate} disabled={loading} className="w-full">
+              {loading ? <Loading size="sm" /> : 'Generate Metadata'}
+            </Button>
+          </div>
+        );
+
+      case 'schema':
+        return (
+          <div className="space-y-4">
+            <Alert>
+              <p className="text-sm">
+                <strong>View Schema:</strong> Get table schema including column names, data types, and nullability.
+                Works with Delta, Iceberg, Hudi, and Parquet tables.
+              </p>
+            </Alert>
+
+            {renderCommonInputs()}
+
+            <div className="space-y-2">
+              <Label htmlFor="tablePath">Table Path</Label>
+              <Input
+                id="tablePath"
+                value={tablePath}
+                onChange={(e) => setTablePath(e.target.value)}
+                placeholder="path/to/table"
+              />
+              <p className="text-xs text-muted-foreground">
+                Path to the lakehouse table within your bucket
+              </p>
+            </div>
+
+            <Button onClick={handleGetSchema} disabled={loading} className="w-full">
+              {loading ? <Loading size="sm" /> : 'Get Schema'}
+            </Button>
+          </div>
+        );
+
+      case 'partitions':
+        return (
+          <div className="space-y-4">
+            <Alert>
+              <p className="text-sm">
+                <strong>View Partitions:</strong> Get table partitioning information including partition columns
+                and values. Helps understand data organization and query optimization.
+              </p>
+            </Alert>
+
+            {renderCommonInputs()}
+
+            <div className="space-y-2">
+              <Label htmlFor="tablePath">Table Path</Label>
+              <Input
+                id="tablePath"
+                value={tablePath}
+                onChange={(e) => setTablePath(e.target.value)}
+                placeholder="path/to/table"
+              />
+            </div>
+
+            <Button onClick={handleGetPartitions} disabled={loading} className="w-full">
+              {loading ? <Loading size="sm" /> : 'Get Partitions'}
+            </Button>
+          </div>
+        );
+
+      case 'snapshots':
+        return (
+          <div className="space-y-4">
+            <Alert>
+              <p className="text-sm">
+                <strong>View Versions:</strong> See the version history of your table. Each version represents
+                a point-in-time snapshot with its own schema and data files.
+              </p>
+            </Alert>
+
+            {renderCommonInputs()}
+
+            <div className="space-y-2">
+              <Label htmlFor="tablePath">Table Path</Label>
+              <Input
+                id="tablePath"
+                value={tablePath}
+                onChange={(e) => setTablePath(e.target.value)}
+                placeholder="path/to/table"
+              />
+            </div>
+
+            <Button onClick={handleGetSnapshots} disabled={loading} className="w-full">
+              {loading ? <Loading size="sm" /> : 'Get Snapshots'}
+            </Button>
+          </div>
+        );
+
+      case 'files':
+        return (
+          <div className="space-y-4">
+            <Alert>
+              <p className="text-sm">
+                <strong>View Files:</strong> List all data files in the table with their sizes and paths.
+                Useful for debugging and understanding table storage layout.
+              </p>
+            </Alert>
+
+            {renderCommonInputs()}
+
+            <div className="space-y-2">
+              <Label htmlFor="tablePath">Table Path</Label>
+              <Input
+                id="tablePath"
+                value={tablePath}
+                onChange={(e) => setTablePath(e.target.value)}
+                placeholder="path/to/table"
+              />
+            </div>
+
+            <Button onClick={handleGetFiles} disabled={loading} className="w-full">
+              {loading ? <Loading size="sm" /> : 'Get Files'}
+            </Button>
+          </div>
+        );
+
+      case 'diff':
+        return (
+          <div className="space-y-4">
+            <Alert>
+              <p className="text-sm">
+                <strong>Compare Snapshots:</strong> Compare two metadata snapshots to see schema changes,
+                file count changes, and data size changes. Useful for tracking table evolution.
+              </p>
+            </Alert>
+
+            {renderCommonInputs()}
+
+            <div className="space-y-2">
+              <Label htmlFor="tablePath">Table Path</Label>
+              <Input
+                id="tablePath"
+                value={tablePath}
+                onChange={(e) => setTablePath(e.target.value)}
+                placeholder="path/to/table"
+              />
+            </div>
+
+            <Button onClick={handleLoadSnapshots} disabled={loading} variant="outline" className="w-full">
+              {loading ? <Loading size="sm" /> : 'Load Available Snapshots'}
+            </Button>
+
+            {availableSnapshots.length > 0 && (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="snapshot1">First Snapshot (Older)</Label>
+                  <select
+                    id="snapshot1"
+                    value={snapshotId1}
+                    onChange={(e) => setSnapshotId1(e.target.value)}
+                    className="w-full rounded-md border border-input bg-background px-3 py-2"
+                  >
+                    <option value="">Select snapshot...</option>
+                    {availableSnapshots.map((snap) => (
+                      <option key={snap.snapshot_id} value={snap.snapshot_id}>
+                        {snap.snapshot_id} ({new Date(snap.timestamp).toLocaleString()})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="snapshot2">Second Snapshot (Newer)</Label>
+                  <select
+                    id="snapshot2"
+                    value={snapshotId2}
+                    onChange={(e) => setSnapshotId2(e.target.value)}
+                    className="w-full rounded-md border border-input bg-background px-3 py-2"
+                  >
+                    <option value="">Select snapshot...</option>
+                    {availableSnapshots.map((snap) => (
+                      <option key={snap.snapshot_id} value={snap.snapshot_id}>
+                        {snap.snapshot_id} ({new Date(snap.timestamp).toLocaleString()})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <Button onClick={handleCompareSnapshots} disabled={loading || !snapshotId1 || !snapshotId2} className="w-full">
+                  {loading ? <Loading size="sm" /> : 'Compare Snapshots'}
+                </Button>
+              </>
+            )}
+          </div>
+        );
+
+      default:
+        return null;
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-background to-muted/20">
       <Navigation />
-      
+
       <main className="container mx-auto px-4 py-8">
-        {/* Header */}
         <div className="mb-8">
           <div className="flex items-center gap-3 mb-3">
-            <div className="h-12 w-12 rounded-lg bg-gradient-to-br from-green-500 to-emerald-500 flex items-center justify-center">
-              <TableProperties className="h-6 w-6 text-white" />
+            <div className="h-12 w-12 rounded-lg bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
+              <Database className="h-6 w-6 text-white" />
             </div>
             <div>
-              <h1 className="text-3xl font-bold">Metadata Generation</h1>
-              <p className="text-muted-foreground">Convert CSV files to Delta Lake format.</p>
+              <h1 className="text-3xl font-bold">Metadata Explorer</h1>
+              <p className="text-muted-foreground">
+                Explore table metadata, schema, partitions, versions, and compare snapshots
+              </p>
             </div>
           </div>
         </div>
 
-        <div className="grid lg:grid-cols-3 gap-6">
-          {/* Left: Form & Results */}
-          <div className="lg:col-span-2 space-y-6">
-            {/* Examples */}
+        <div className="grid lg:grid-cols-4 gap-6">
+          {/* Sidebar - Tabs */}
+          <div className="lg:col-span-1">
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">Example Paths</CardTitle>
-                <CardDescription>Click to load an example configuration</CardDescription>
+                <CardTitle className="text-lg">Operations</CardTitle>
+                <CardDescription>Select an operation</CardDescription>
               </CardHeader>
-              <CardContent>
-                <div className="flex flex-wrap gap-3">
-                  {examplePaths.map((example, index) => (
-                    <Button
-                      key={index}
-                      variant="outline"
-                      onClick={() => handleLoadExample(example)}
-                      className="flex-col h-auto py-3"
+              <CardContent className="space-y-2">
+                {tabs.map((tab) => {
+                  const Icon = tab.icon;
+                  return (
+                    <button
+                      key={tab.id}
+                      onClick={() => {
+                        setActiveTab(tab.id);
+                        setError('');
+                        setResult(null);
+                      }}
+                      className={`w-full text-left px-4 py-3 rounded-lg transition-colors ${
+                        activeTab === tab.id
+                          ? 'bg-primary text-primary-foreground'
+                          : 'hover:bg-muted'
+                      }`}
                     >
-                      <div className="font-medium mb-1">{example.label}</div>
-                      <div className="text-xs text-muted-foreground font-mono">{example.path}</div>
-                    </Button>
-                  ))}
-                </div>
+                      <div className="flex items-center gap-2">
+                        <Icon className="h-4 w-4" />
+                        <span className="font-medium text-sm">{tab.label}</span>
+                      </div>
+                      <p className="text-xs mt-1 opacity-80">{tab.description}</p>
+                    </button>
+                  );
+                })}
               </CardContent>
             </Card>
+          </div>
 
-            {/* Form */}
+          {/* Main Content */}
+          <div className="lg:col-span-3 space-y-6">
+            {/* Input Form */}
             <Card>
               <CardHeader>
-                <CardTitle>CSV Configuration</CardTitle>
-                <CardDescription>Specify your CSV file details</CardDescription>
+                <CardTitle>{tabs.find(t => t.id === activeTab)?.label}</CardTitle>
+                <CardDescription>{tabs.find(t => t.id === activeTab)?.description}</CardDescription>
               </CardHeader>
               <CardContent>
-                <form onSubmit={handleSubmit} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="csvPath">
-                      <FileText className="inline h-4 w-4 mr-1" />
-                      CSV File Path
-                    </Label>
-                    <Input
-                      id="csvPath"
-                      value={csvPath}
-                      onChange={(e) => setCsvPath(e.target.value)}
-                      placeholder="raw/customers.csv"
-                      className="font-mono text-sm"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Path to your CSV file relative to S3 bucket
-                    </p>
-                  </div>
-
-                  <div className="grid md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="storageType">Storage Type</Label>
-                      <select
-                        id="storageType"
-                        value={storageType}
-                        onChange={(e) => setStorageType(e.target.value)}
-                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      >
-                        <option value="aws">AWS S3</option>
-                        <option value="minio">MinIO</option>
-                      </select>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="bucketName">
-                        <FolderOpen className="inline h-4 w-4 mr-1" />
-                        S3 Bucket Name
-                      </Label>
-                      <Input
-                        id="bucketName"
-                        value={bucketName}
-                        onChange={(e) => setBucketName(e.target.value)}
-                        placeholder="my-lakehouse-bucket"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex items-center space-x-2">
-                    <input
-                      type="checkbox"
-                      id="forceRefresh"
-                      checked={forceRefresh}
-                      onChange={(e) => setForceRefresh(e.target.checked)}
-                      className="h-4 w-4 rounded border-gray-300"
-                    />
-                    <Label htmlFor="forceRefresh" className="cursor-pointer">
-                      Force Refresh (regenerate metadata even if it exists)
-                    </Label>
-                  </div>
-
-                  <Button 
-                    type="submit" 
-                    className="w-full"
-                    disabled={loading || !csvPath.trim()}
-                  >
-                    {loading ? 'Generating...' : 'Generate Metadata'}
-                  </Button>
-                </form>
+                {renderTabContent()}
               </CardContent>
             </Card>
 
             {/* Error Display */}
             {error && (
               <Alert variant="destructive">
-                <AlertTitle>Error</AlertTitle>
-                <AlertDescription>{error}</AlertDescription>
+                <p className="text-sm font-medium">Error</p>
+                <p className="text-sm">{error}</p>
               </Alert>
             )}
 
-            {/* Loading State */}
-            {loading && <LoadingCard message="Converting CSV to Delta Lake..." />}
-
-            {/* Success Result */}
+            {/* Results Display */}
             {result && (
-              <Alert variant="success">
-                <CheckCircle2 className="h-4 w-4" />
-                <AlertTitle>Metadata Generated Successfully!</AlertTitle>
-                <AlertDescription>
-                  <div className="mt-3 space-y-2 text-sm">
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="font-medium">Snapshot ID:</div>
-                      <div className="font-mono">{result.snapshot_id}</div>
-                      
-                      <div className="font-medium">Table Location:</div>
-                      <div className="font-mono text-xs break-all">{result.table_location}</div>
-                      
-                      <div className="font-medium">Delta Path:</div>
-                      <div className="font-mono text-xs break-all">{result.delta_path}</div>
-                      
-                      {result.row_count !== undefined && (
-                        <>
-                          <div className="font-medium">Row Count:</div>
-                          <div>{result.row_count.toLocaleString()}</div>
-                        </>
-                      )}
-                      
-                      {result.columns && (
-                        <>
-                          <div className="font-medium">Columns:</div>
-                          <div>{result.columns.length}</div>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                </AlertDescription>
-              </Alert>
-            )}
-
-            {/* Schema Display */}
-            {result && result.schema && (
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-lg">Detected Schema</CardTitle>
-                  <CardDescription>
-                    {result.schema.length} columns detected from CSV
-                  </CardDescription>
+                  <CardTitle>Results</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-2">
-                    {result.schema.map((col: any, index: number) => (
-                      <div
-                        key={index}
-                        className="flex items-center justify-between p-3 bg-muted rounded-lg"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="h-8 w-8 rounded bg-primary/10 text-primary flex items-center justify-center text-xs font-bold">
-                            {index + 1}
-                          </div>
-                          <div>
-                            <div className="font-mono font-medium">{col.name}</div>
-                            {col.nullable !== undefined && (
-                              <div className="text-xs text-muted-foreground">
-                                {col.nullable ? 'Nullable' : 'Required'}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                        <div className="text-sm font-mono text-blue-600 dark:text-blue-400">
-                          {col.type}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                  <CodeBlock code={JSON.stringify(result, null, 2)} language="json" />
                 </CardContent>
               </Card>
             )}
-          </div>
-
-          {/* Right: Info & Process */}
-          <div className="space-y-6">
-            {/* Process Flow */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Layers className="h-5 w-5 text-green-500" />
-                  Conversion Process
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="flex items-start gap-2">
-                  <div className="h-6 w-6 rounded-full bg-green-100 text-green-600 flex items-center justify-center flex-shrink-0 text-xs font-bold">1</div>
-                  <div>
-                    <div className="font-medium text-sm">Read CSV</div>
-                    <div className="text-xs text-muted-foreground">Load and parse your CSV file</div>
-                  </div>
-                </div>
-                <div className="flex items-start gap-2">
-                  <div className="h-6 w-6 rounded-full bg-green-100 text-green-600 flex items-center justify-center flex-shrink-0 text-xs font-bold">2</div>
-                  <div>
-                    <div className="font-medium text-sm">Detect Schema</div>
-                    <div className="text-xs text-muted-foreground">Automatically infer column types</div>
-                  </div>
-                </div>
-                <div className="flex items-start gap-2">
-                  <div className="h-6 w-6 rounded-full bg-green-100 text-green-600 flex items-center justify-center flex-shrink-0 text-xs font-bold">3</div>
-                  <div>
-                    <div className="font-medium text-sm">Convert Format</div>
-                    <div className="text-xs text-muted-foreground">Write to Delta Lake format</div>
-                  </div>
-                </div>
-                <div className="flex items-start gap-2">
-                  <div className="h-6 w-6 rounded-full bg-green-100 text-green-600 flex items-center justify-center flex-shrink-0 text-xs font-bold">4</div>
-                  <div>
-                    <div className="font-medium text-sm">Create Snapshot</div>
-                    <div className="text-xs text-muted-foreground">Generate version metadata</div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Info & Tips */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Info className="h-5 w-5 text-blue-500" />
-                  Important Notes
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3 text-sm">
-                <div>
-                  <div className="font-medium mb-1">📁 File Format</div>
-                  <div className="text-muted-foreground">
-                    Only CSV files are supported. Ensure proper formatting with headers.
-                  </div>
-                </div>
-                <div>
-                  <div className="font-medium mb-1">🔄 Force Refresh</div>
-                  <div className="text-muted-foreground">
-                    Enable to regenerate metadata even if Delta table already exists.
-                  </div>
-                </div>
-                <div>
-                  <div className="font-medium mb-1">💾 Storage Location</div>
-                  <div className="text-muted-foreground">
-                    Delta files are stored in: <span className="font-mono">data/delta/[table_name]</span>
-                  </div>
-                </div>
-                <div>
-                  <div className="font-medium mb-1">⚡ Performance</div>
-                  <div className="text-muted-foreground">
-                    Conversion time depends on CSV size. Small files: ~1-2 seconds.
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Benefits */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Delta Lake Benefits</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2 text-sm">
-                <div className="flex items-start gap-2">
-                  <CheckCircle2 className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" />
-                  <span>ACID transactions for data reliability</span>
-                </div>
-                <div className="flex items-start gap-2">
-                  <CheckCircle2 className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" />
-                  <span>Time travel to query historical versions</span>
-                </div>
-                <div className="flex items-start gap-2">
-                  <CheckCircle2 className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" />
-                  <span>Schema evolution support</span>
-                </div>
-                <div className="flex items-start gap-2">
-                  <CheckCircle2 className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" />
-                  <span>Better compression than CSV</span>
-                </div>
-                <div className="flex items-start gap-2">
-                  <CheckCircle2 className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" />
-                  <span>Fast columnar queries with Parquet</span>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Next Steps */}
-            <Alert variant="info">
-              <AlertTitle>After Generation</AlertTitle>
-              <AlertDescription className="text-sm mt-2 space-y-1">
-                <div>1. Note your snapshot ID</div>
-                <div>2. Use the table path in SQL or Natural Language queries</div>
-                <div>3. View snapshots in the Snapshots page</div>
-              </AlertDescription>
-            </Alert>
           </div>
         </div>
       </main>

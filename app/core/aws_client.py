@@ -12,7 +12,6 @@ Why This Design?
 """
 
 import boto3
-from botocore.config import Config
 from botocore.exceptions import (
     ClientError,
     NoCredentialsError,
@@ -62,18 +61,11 @@ class AWSConnectionService:
             Configured boto3 S3 client
         """
         if not self.s3_client:
-            # Configure timeouts to prevent hanging
-            config = Config(
-                connect_timeout=5,  # 5 seconds to establish connection
-                read_timeout=10,    # 10 seconds to read response
-                retries={'max_attempts': 2}  # Retry twice on failure
-            )
             self.s3_client = boto3.client(
                 's3',
                 aws_access_key_id=self.access_key_id,
                 aws_secret_access_key=self.secret_access_key,
-                region_name=self.region,
-                config=config
+                region_name=self.region
             )
         return self.s3_client
     

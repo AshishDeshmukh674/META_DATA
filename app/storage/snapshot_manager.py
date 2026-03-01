@@ -40,7 +40,6 @@ Usage:
 
 import json
 import boto3
-from botocore.config import Config
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 
@@ -73,20 +72,12 @@ class SnapshotManager:
         Returns:
             boto3 S3 client
         """
-        # Configure timeouts to prevent hanging
-        config = Config(
-            connect_timeout=5,  # 5 seconds to establish connection
-            read_timeout=10,    # 10 seconds to read response  
-            retries={'max_attempts': 2}  # Retry twice on failure
-        )
-        
         if storage_type == "aws":
             return boto3.client(
                 's3',
                 aws_access_key_id=settings.aws_access_key_id,
                 aws_secret_access_key=settings.aws_secret_access_key,
-                region_name=settings.aws_region,
-                config=config
+                region_name=settings.aws_region
             )
         elif storage_type == "minio":
             return boto3.client(
@@ -94,8 +85,7 @@ class SnapshotManager:
                 endpoint_url=settings.minio_endpoint,
                 aws_access_key_id=settings.minio_access_key,
                 aws_secret_access_key=settings.minio_secret_key,
-                region_name='us-east-1',  # MinIO doesn't care about region
-                config=config
+                region_name='us-east-1'  # MinIO doesn't care about region
             )
         else:
             raise ValueError(f"Unsupported storage type: {storage_type}")
@@ -230,46 +220,6 @@ class SnapshotManager:
             
         except Exception as e:
             logger.error(f"Failed to get latest snapshot: {e}", exc_info=True)
-            return None
-    
-    def get_snapshot_by_id(
-        self,
-        storage_type: str,
-        bucket: str,
-        path: str,
-        snapshot_id: str
-    ) -> Optional[Dict[str, Any]]:
-        """
-        Get a specific snapshot by its ID.
-        
-        Args:
-            storage_type: "aws" or "minio"
-            bucket: S3 bucket name
-            path: Path to table within bucket
-            snapshot_id: Snapshot ID to retrieve
-            
-        Returns:
-            Metadata dictionary or None if snapshot not found
-        """
-        try:
-            logger.info(f"Retrieving snapshot: {snapshot_id}")
-            
-            snapshot_data = self._load_snapshot_content(
-                storage_type,
-                bucket,
-                path,
-                snapshot_id
-            )
-            
-            if snapshot_data:
-                logger.info(f"Retrieved snapshot: {snapshot_id}")
-            else:
-                logger.warning(f"Snapshot not found: {snapshot_id}")
-            
-            return snapshot_data
-            
-        except Exception as e:
-            logger.error(f"Failed to get snapshot {snapshot_id}: {e}", exc_info=True)
             return None
     
     def list_snapshots(

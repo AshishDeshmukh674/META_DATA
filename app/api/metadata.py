@@ -22,7 +22,7 @@ from app.metadata.parquet_reader import ParquetReader
 from app.core.logger import get_logger
 
 logger = get_logger()
-router = APIRouter(prefix="/metadata")
+router = APIRouter(prefix="/metadata", tags=["metadata"])
 
 
 def get_reader(format: str, bucket: str, path: str, storage_type: str):
@@ -88,9 +88,9 @@ async def get_schema(
                 path=request.path,
                 storage_type=request.storage_type
             )
-            detection_result = detector.detect()
+            success, detection_result = detector.detect()
             
-            if not detection_result.get('success') or detection_result.get('format') == 'unknown':
+            if not success or detection_result.get('format') == 'unknown':
                 raise HTTPException(
                     status_code=404,
                     detail="Could not detect table format. Please specify format explicitly."
@@ -164,9 +164,9 @@ async def get_partitions(
                 path=request.path,
                 storage_type=request.storage_type
             )
-            detection_result = detector.detect()
+            success, detection_result = detector.detect()
             
-            if not detection_result.get('success') or detection_result.get('format') == 'unknown':
+            if not success or detection_result.get('format') == 'unknown':
                 raise HTTPException(
                     status_code=404,
                     detail="Could not detect table format. Please specify format explicitly."
@@ -239,9 +239,9 @@ async def get_snapshots(
                 path=request.path,
                 storage_type=request.storage_type
             )
-            detection_result = detector.detect()
+            success, detection_result = detector.detect()
             
-            if not detection_result.get('success') or detection_result.get('format') == 'unknown':
+            if not success or detection_result.get('format') == 'unknown':
                 raise HTTPException(
                     status_code=404,
                     detail="Could not detect table format. Please specify format explicitly."
@@ -314,9 +314,9 @@ async def get_files(
                 path=request.path,
                 storage_type=request.storage_type
             )
-            detection_result = detector.detect()
+            success, detection_result = detector.detect()
             
-            if not detection_result.get('success') or detection_result.get('format') == 'unknown':
+            if not success or detection_result.get('format') == 'unknown':
                 raise HTTPException(
                     status_code=404,
                     detail="Could not detect table format. Please specify format explicitly."

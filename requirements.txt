@@ -22,12 +22,6 @@ delta-spark==3.2.0  # Compatible with Spark 3.5.x
 # Delta Lake Python library (Phase 5 metadata reading)
 deltalake==0.15.0
 
-# Trino Query Engine (Phase 7 read queries)
-trino==0.328.0
-
-# LLM & AI (Phase 7.5 - Natural Language Queries)
-groq==0.4.2
-
 # Configuration & Environment
 python-dotenv==1.0.0
 

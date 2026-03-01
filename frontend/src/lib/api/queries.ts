@@ -1,26 +1,33 @@
-import apiClient from './client';
+import { apiClient } from './client';
 import type {
+  HealthResponse,
   GenerateMetadataRequest,
   GenerateMetadataResponse,
+  MetadataRequest,
+  MetadataResponse,
   SnapshotListResponse,
-  SQLQueryRequest,
-  QueryExecuteResponse,
-  SnapshotQueryRequest,
-  SnapshotQueryResponse,
-  NaturalLanguageQueryRequest,
-  NaturalLanguageQueryResponse,
-  SyncTableResponse,
-  TableInfoResponse,
+  SnapshotDiffRequest,
+  SnapshotDiffResponse,
+  QueryRequest,
+  QueryResponse,
+  NLQueryRequest,
+  NLQueryResponse,
   ConnectionTestResponse,
-} from '../types/api';
+} from '@/lib/types/api';
 
+// ============================================================================
 // Health Check
-export const checkHealth = async () => {
+// ============================================================================
+
+export const checkHealth = async (): Promise<HealthResponse> => {
   const response = await apiClient.get('/health');
   return response.data;
 };
 
+// ============================================================================
 // Metadata Generation
+// ============================================================================
+
 export const generateMetadata = async (
   data: GenerateMetadataRequest
 ): Promise<GenerateMetadataResponse> => {
@@ -28,73 +35,102 @@ export const generateMetadata = async (
   return response.data;
 };
 
+// ============================================================================
+// Metadata Operations
+// ============================================================================
+
+export const getSchema = async (
+  data: MetadataRequest
+): Promise<MetadataResponse> => {
+  const response = await apiClient.post('/metadata/schema', data);
+  return response.data;
+};
+
+export const getPartitions = async (
+  data: MetadataRequest
+): Promise<MetadataResponse> => {
+  const response = await apiClient.post('/metadata/partitions', data);
+  return response.data;
+};
+
+export const getSnapshots = async (
+  data: MetadataRequest
+): Promise<MetadataResponse> => {
+  const response = await apiClient.post('/metadata/snapshots', data);
+  return response.data;
+};
+
+export const getFiles = async (
+  data: MetadataRequest
+): Promise<MetadataResponse> => {
+  const response = await apiClient.post('/metadata/files', data);
+  return response.data;
+};
+
+// ============================================================================
 // Snapshot Management
+// ============================================================================
+
 export const listSnapshots = async (
   storageType: string,
   bucket: string,
   tablePath: string
 ): Promise<SnapshotListResponse> => {
-  const response = await apiClient.get('/query/snapshots/list', {
+  const response = await apiClient.get('/metadata/snapshots/list', {
     params: {
       storage_type: storageType,
       bucket,
-      table_path: tablePath,
+      path: tablePath,
     },
   });
   return response.data;
 };
 
-// Query Execution
-export const testConnection = async (): Promise<ConnectionTestResponse> => {
-  const response = await apiClient.post('/query/test-connection', {});
-  return response.data;
-};
-
-export const syncTable = async (
+export const getLatestSnapshot = async (
   storageType: string,
   bucket: string,
-  tablePath: string,
-  schemaName: string = 'default'
-): Promise<SyncTableResponse> => {
-  const response = await apiClient.post('/query/sync-table', null, {
+  tablePath: string
+): Promise<any> => {
+  const response = await apiClient.get('/metadata/snapshots/latest', {
     params: {
       storage_type: storageType,
       bucket,
-      table_path: tablePath,
-      schema_name: schemaName,
+      path: tablePath,
     },
   });
   return response.data;
 };
 
-export const executeSQL = async (
-  sql: string
-): Promise<QueryExecuteResponse> => {
-  const response = await apiClient.post('/query/execute', { sql });
+export const compareSnapshots = async (
+  data: SnapshotDiffRequest
+): Promise<SnapshotDiffResponse> => {
+  const response = await apiClient.post('/metadata/snapshots/diff', data);
   return response.data;
 };
 
-export const executeSnapshotQuery = async (
-  data: SnapshotQueryRequest
-): Promise<SnapshotQueryResponse> => {
-  const response = await apiClient.post('/query/execute/snapshot', data);
+// ============================================================================
+// Query Execution
+// ============================================================================
+
+export const executeQuery = async (
+  data: QueryRequest
+): Promise<QueryResponse> => {
+  const response = await apiClient.post('/query/execute', data);
   return response.data;
 };
 
-export const executeNaturalLanguageQuery = async (
-  data: NaturalLanguageQueryRequest
-): Promise<NaturalLanguageQueryResponse> => {
-  const response = await apiClient.post('/query/natural', data);
+export const executeNLQuery = async (
+  data: NLQueryRequest
+): Promise<NLQueryResponse> => {
+  const response = await apiClient.post('/query/natural-language', data);
   return response.data;
 };
 
-export const getTableInfo = async (
-  catalog: string,
-  schema: string,
-  table: string
-): Promise<TableInfoResponse> => {
-  const response = await apiClient.get('/query/table-info', {
-    params: { catalog, schema, table },
-  });
+// ============================================================================
+// Connection Test
+// ============================================================================
+
+export const testConnection = async (): Promise<ConnectionTestResponse> => {
+  const response = await apiClient.post('/query/test-connection', {});
   return response.data;
 };

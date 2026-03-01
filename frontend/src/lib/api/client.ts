@@ -1,16 +1,16 @@
-import axios, { AxiosError } from 'axios';
+import axios from 'axios';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8001';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 export const apiClient = axios.create({
-  baseURL: API_URL,
+  baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 180000, // 3 minutes for long-running queries
+  timeout: 300000, // 5 minutes for Spark operations (first run downloads JARs + S3 I/O)
 });
 
-// Request interceptor for logging
+// Add request interceptor for logging
 apiClient.interceptors.request.use(
   (config) => {
     console.log(`API Request: ${config.method?.toUpperCase()} ${config.url}`);
@@ -21,18 +21,13 @@ apiClient.interceptors.request.use(
   }
 );
 
-// Response interceptor for error handling
+// Add response interceptor for error handling
 apiClient.interceptors.response.use(
   (response) => {
     return response;
   },
-  (error: AxiosError) => {
-    const message = error.response?.data 
-      ? JSON.stringify(error.response.data) 
-      : error.message;
-    console.error('API Error:', message);
+  (error) => {
+    console.error('API Error:', error.response?.data || error.message);
     return Promise.reject(error);
   }
 );
-
-export default apiClient;

@@ -25,7 +25,6 @@ Usage:
 """
 
 import os
-import sys
 import json
 import uuid
 import time
@@ -72,63 +71,6 @@ class SparkMetadataEngine:
         try:
             logger.info(f"Creating Spark session for storage_type={storage_type}")
             
-            # Set JAVA_HOME from settings if provided
-            if settings.java_home:
-                os.environ['JAVA_HOME'] = settings.java_home
-                # Also add Java bin to PATH
-                java_bin = os.path.join(settings.java_home, 'bin')
-                if 'PATH' in os.environ:
-                    if java_bin not in os.environ['PATH']:
-                        os.environ['PATH'] = f"{java_bin};{os.environ['PATH']}"
-                else:
-                    os.environ['PATH'] = java_bin
-                logger.info(f"Set JAVA_HOME to {settings.java_home}")
-                logger.info(f"Added {java_bin} to PATH")
-            
-            # Set HADOOP_HOME for Windows compatibility
-            if settings.hadoop_home:
-                os.environ['HADOOP_HOME'] = settings.hadoop_home
-                os.environ['hadoop.home.dir'] = settings.hadoop_home
-                # Add Hadoop bin to PATH for winutils.exe
-                hadoop_bin = os.path.join(settings.hadoop_home, 'bin')
-                if 'PATH' in os.environ:
-                    if hadoop_bin not in os.environ['PATH']:
-                        os.environ['PATH'] = f"{hadoop_bin};{os.environ['PATH']}"
-                else:
-                    os.environ['PATH'] = hadoop_bin
-                logger.info(f"Set HADOOP_HOME to {settings.hadoop_home}")
-                logger.info(f"Added {hadoop_bin} to PATH")
-            
-            # CRITICAL: Unset SPARK_HOME to avoid conflicts with system Spark installations
-            # PySpark will use its bundled Spark version
-            if 'SPARK_HOME' in os.environ:
-                logger.warning(f"Removing SPARK_HOME={os.environ['SPARK_HOME']} to avoid conflicts")
-                del os.environ['SPARK_HOME']
-            
-            # Set PYSPARK environment variables to use current Python interpreter
-            python_exe = sys.executable
-            os.environ['PYSPARK_PYTHON'] = python_exe
-            os.environ['PYSPARK_DRIVER_PYTHON'] = python_exe
-            logger.info(f"Set PYSPARK_PYTHON to {python_exe}")
-            
-            # Verify JAVA_HOME is set
-            java_home = os.environ.get('JAVA_HOME')
-            if not java_home:
-                raise EnvironmentError(
-                    "JAVA_HOME is not set. Please set JAVA_HOME in your .env file. "
-                    "Example: JAVA_HOME=C:\\Program Files\\Java\\jdk-25"
-                )
-            else:
-                logger.info(f"Using JAVA_HOME: {java_home}")
-                # Verify Java executable exists
-                java_exe = os.path.join(java_home, 'bin', 'java.exe')
-                if not os.path.exists(java_exe):
-                    raise EnvironmentError(
-                        f"Java executable not found at {java_exe}. "
-                        f"Please verify your JAVA_HOME setting."
-                    )
-                logger.info(f"Verified Java executable at {java_exe}")
-            
             # CRITICAL: Stop any existing Spark session first
             try:
                 existing_spark = SparkSession.getActiveSession()
@@ -139,14 +81,14 @@ class SparkMetadataEngine:
                 pass  # No existing session
             
             # Build Spark session with Delta Lake packages
-            # Use SPARK_MASTER_URL if set, otherwise use local mode
-            spark_master = settings.spark_master_url or settings.spark_master or "local[*]"
+            # Use local mode or connect to Spark cluster from settings
+            spark_master = settings.spark_master
             logger.info(f"Connecting to Spark master at {spark_master}")
             
             builder = SparkSession.builder \
                 .appName("LakehouseMetadataExtractor") \
                 .master(spark_master) \
-                .config("spark.jars.packages", "io.delta:delta-spark_2.12:3.0.0,org.apache.hadoop:hadoop-aws:3.3.4") \
+                .config("spark.jars.packages", "io.delta:delta-spark_2.12:3.2.0,org.apache.hadoop:hadoop-aws:3.3.4") \
                 .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension") \
                 .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog") \
                 .config("spark.network.timeout", "600s") \

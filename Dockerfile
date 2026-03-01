@@ -1,7 +1,7 @@
 # Dockerfile for Lakehouse Explorer FastAPI Application
 # Runs FastAPI in Docker with access to Spark cluster
 
-FROM python:3.12-slim
+FROM python:3.11-slim-bullseye
 
 # Set working directory
 WORKDIR /app
@@ -9,11 +9,11 @@ WORKDIR /app
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     curl \
-    openjdk-21-jre-headless \
+    openjdk-17-jre-headless \
     && rm -rf /var/lib/apt/lists/*
 
 # Set Java environment variables
-ENV JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
+ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
 ENV PATH="${JAVA_HOME}/bin:${PATH}"
 
 # Copy requirements file

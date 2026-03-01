@@ -77,7 +77,7 @@ def create_application() -> FastAPI:
     # 1. CORS - Allow frontend to call API
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],  # Allow all origins in development
+        allow_origins=settings.get_allowed_origins_list(),
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -184,13 +184,12 @@ def create_application() -> FastAPI:
         )
     
     # ===== ROUTERS =====
-    from app.api import health, connection, detect, metadata, metadata_gen, query
+    from app.api import health, connection, detect, metadata, metadata_gen
     app.include_router(health.router, prefix="/health", tags=["Health"])
     app.include_router(connection.router, prefix="/connect", tags=["Connection"])
     app.include_router(detect.router, prefix="/detect-format", tags=["Detection"])
     app.include_router(metadata.router, tags=["Metadata (Phase 5)"])  # prefix="/metadata" already in router
     app.include_router(metadata_gen.router, tags=["Metadata Generation (Phase 6)"])  # prefix="/metadata" already in router
-    app.include_router(query.router, tags=["Query Execution (Phase 7)"])  # prefix="/query" already in router
     
     return app
 

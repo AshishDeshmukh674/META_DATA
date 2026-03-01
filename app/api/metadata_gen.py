@@ -205,9 +205,9 @@ async def generate_metadata(request: MetadataGenerateRequest) -> MetadataGenerat
                 path=request.path,
                 storage_type=request.storage_type
             )
-            detection_result = detector.detect()
+            success, detection_result = detector.detect()
             
-            if detection_result.get('success') and detection_result.get('format') != 'unknown':
+            if success and detection_result.get('format') != 'unknown':
                 table_format = detection_result['format']
                 logger.info(f"Auto-detected format: {table_format}")
             else:
