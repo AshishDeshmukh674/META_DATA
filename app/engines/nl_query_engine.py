@@ -42,25 +42,16 @@ class NaturalLanguageQueryEngine:
     def __init__(self):
         """Initialize Groq client."""
         api_key = settings.groq_api_key
-        print(f"[NL ENGINE DEBUG] Settings API key from import: {bool(api_key)}", flush=True)
-        if api_key:
-            print(f"[NL ENGINE DEBUG] Key prefix: {api_key[:20]}...", flush=True)
-        
-        # TEMPORARY: Hardcode API key for testing
-        if not api_key:
-            api_key = "put your_groq_api_key_here_for_testing"
-            print(f"[NL ENGINE DEBUG] Using hardcoded API key for testing!", flush=True)
-        
-        logger.info(f"Initializing Groq client with key: {api_key[:15] if api_key else 'NONE'}...")
         
         if not api_key:
             raise ValueError(
                 "GROQ_API_KEY not set. Add it to .env file:\n"
-                "GROQ_API_KEY=your_api_key_here"
+                "GROQ_API_KEY=your_api_key_here\n"
+                "Get a free key from: https://console.groq.com/keys"
             )
         
         self.client = Groq(api_key=api_key)
-        logger.info(f"Groq client initialized. API key starts with: {self.client.api_key[:15]}")
+        logger.info(f"Groq client initialized successfully")
         self.model = settings.groq_model
         self.temperature = settings.groq_temperature
         self.max_tokens = settings.groq_max_tokens
@@ -204,33 +195,37 @@ CONTEXT:
 {available_tables_info}
 
 OPERATION TYPES:
-1. "query" - Execute SQL query on data
-2. "list_snapshots" - List available data versions
-3. "table_info" - Get table schema/metadata
-4. "test_connection" - Test Trino connection
-5. "sync_table" - Register table in Trino
+1. "query" - Execute SELECT query to retrieve data
+2. "update" - Execute UPDATE query to modify existing data
+3. "insert" - Execute INSERT query to add new data
+4. "delete" - Execute DELETE query to remove data
+5. "list_snapshots" - List available data versions
+6. "table_info" - Get table schema/metadata
+7. "test_connection" - Test Trino connection
+8. "sync_table" - Register table in Trino
 
 RULES FOR SQL GENERATION:
-1. For Trino queries: Use format "delta.default.table_name" or "delta.default.{{table}}"
-2. For Spark snapshot queries: Use "{{table}}" placeholder (will be replaced with actual path)
-3. Always use exact column names from schema (case-sensitive)
-4. Use LIMIT clause for safety (default: 100)
+1. ALWAYS use "query_table" as the table name in SQL (the actual table will be loaded and registered with this name)
+2. Always use exact column names from schema (case-sensitive)
+3. For SELECT queries: Use LIMIT clause for safety (default: 100)
+4. For UPDATE/DELETE: Always include WHERE clause for safety (no WHERE = error)
 5. For aggregations: always include GROUP BY
-6. For time travel: set operation="query_snapshot" and include snapshot_id
+6. For INSERT: Include all required columns
+7. Keep queries simple and efficient
+8. For write operations (UPDATE/INSERT/DELETE): operation must be "update", "insert", or "delete"
 
 RESPONSE FORMAT (JSON):
 {{
-  "operation": "query|list_snapshots|table_info|test_connection|sync_table|query_snapshot",
-  "sql": "SELECT ... FROM ... WHERE ...",  // Only if operation is query or query_snapshot
+  "operation": "query|update|insert|delete|list_snapshots|table_info|test_connection|sync_table",
+  "sql": "SELECT ... FROM query_table WHERE ..." OR "UPDATE query_table SET ... WHERE ..." OR "INSERT INTO query_table VALUES ..." OR "DELETE FROM query_table WHERE ...",
   "parameters": {{
     "columns": ["col1", "col2"],  // For simple queries
     "filter": "age > 25",  // WHERE clause
     "limit": 100,
-    "snapshot_id": "snapshot_xxx"  // For time travel queries
+    "is_destructive": true  // For UPDATE/DELETE operations
   }},
   "explanation": "I will execute a query to ...",
-  "suggested_table": "table_name",  // If user didn't specify
-  "needs_sync": true  // If table needs registration in Trino first
+  "suggested_table": "table_name"  // If user didn't specify
 }}
 
 EXAMPLES:
@@ -239,7 +234,7 @@ User: "Show me all customers from Mumbai"
 Response:
 {{
   "operation": "query",
-  "sql": "SELECT * FROM delta.default.customer_data_delta WHERE City = 'Mumbai' LIMIT 100",
+  "sql": "SELECT * FROM query_table WHERE City = 'Mumbai' LIMIT 100",
   "parameters": {{
     "filter": "City = 'Mumbai'",
     "limit": 100
@@ -251,7 +246,7 @@ User: "Count customers by city"
 Response:
 {{
   "operation": "query",
-  "sql": "SELECT City, COUNT(*) as count FROM delta.default.customer_data_delta GROUP BY City",
+  "sql": "SELECT City, COUNT(*) as count FROM query_table GROUP BY City",
   "parameters": {{}},
   "explanation": "Counting customers grouped by city"
 }}
@@ -276,7 +271,7 @@ User: "Show me top 5 customers"
 Response:
 {{
   "operation": "query",
-  "sql": "SELECT * FROM delta.default.customer_data_delta LIMIT 5",
+  "sql": "SELECT * FROM query_table LIMIT 5",
   "parameters": {{"limit": 5}},
   "explanation": "Selecting first 5 customer records"
 }}
@@ -285,12 +280,59 @@ User: "Give me customers with email containing gmail"
 Response:
 {{
   "operation": "query",
-  "sql": "SELECT * FROM delta.default.customer_data_delta WHERE Email LIKE '%gmail%' LIMIT 100",
+  "sql": "SELECT * FROM query_table WHERE Email LIKE '%gmail%' LIMIT 100",
   "parameters": {{
     "filter": "Email LIKE '%gmail%'",
     "limit": 100
   }},
   "explanation": "Filtering customers whose email contains 'gmail'"
+}}
+
+User: "Update name to 'John Doe' where customer id is C001"
+Response:
+{{
+  "operation": "update",
+  "sql": "UPDATE query_table SET Name = 'John Doe' WHERE CustomerId = 'C001'",
+  "parameters": {{
+    "filter": "CustomerId = 'C001'",
+    "is_destructive": true
+  }},
+  "explanation": "Updating customer name where CustomerId is C001"
+}}
+
+User: "Delete customer with id C999"
+Response:
+{{
+  "operation": "delete",
+  "sql": "DELETE FROM query_table WHERE CustomerId = 'C999'",
+  "parameters": {{
+    "filter": "CustomerId = 'C999'",
+    "is_destructive": true
+  }},
+  "explanation": "Deleting customer record where CustomerId is C999"
+}}
+
+User: "Insert a new customer: id C100, name Sarah, email sarah@example.com"
+Response:
+{{
+  "operation": "insert",
+  "sql": "INSERT INTO query_table (CustomerId, Name, Email) VALUES ('C100', 'Sarah', 'sarah@example.com')",
+  "parameters": {{
+    "is_destructive": true
+  }},
+  "explanation": "Inserting new customer record with id C100"
+}}
+
+User: "Change email to newemail@test.com for all customers in Mumbai"
+Response:
+{{
+  "operation": "update",
+  "sql": "UPDATE query_table SET Email = 'newemail@test.com' WHERE City = 'Mumbai'",
+  "parameters": {{
+    "filter": "City = 'Mumbai'",
+    "is_destructive": true
+  }},
+  "explanation": "Updating email for all customers in Mumbai city"
 }}
 
 NOW PROCESS THE USER'S QUERY AND RETURN JSON.
