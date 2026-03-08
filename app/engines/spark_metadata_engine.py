@@ -71,19 +71,22 @@ class SparkMetadataEngine:
         try:
             logger.info(f"Creating Spark session for storage_type={storage_type}")
             
-            # CRITICAL: Stop any existing Spark session first
+            # Check for existing Spark session and reuse it if active
             try:
                 existing_spark = SparkSession.getActiveSession()
-                if existing_spark:
-                    logger.warning("Found existing Spark session, stopping it first")
-                    existing_spark.stop()
-            except:
-                pass  # No existing session
+                if existing_spark and not existing_spark.sparkContext._jsc.sc().isStopped():
+                    logger.info("Reusing existing active Spark session")
+                    self.spark = existing_spark
+                    return existing_spark  # Return the reused session
+                elif existing_spark:
+                    logger.warning("Found stopped Spark session, creating new one")
+            except Exception as e:
+                logger.debug(f"No active session to reuse: {e}")
             
             # Build Spark session with Delta Lake packages
             # Use local mode or connect to Spark cluster from settings
             spark_master = settings.spark_master
-            logger.info(f"Connecting to Spark master at {spark_master}")
+            logger.info(f"Creating new Spark session, connecting to {spark_master}")
             
             builder = SparkSession.builder \
                 .appName("LakehouseMetadataExtractor") \
@@ -255,6 +258,10 @@ class SparkMetadataEngine:
             schema_json = json.loads(df.schema.json())
             logger.info(f"Extracted schema with {len(schema_json['fields'])} columns")
             
+            # Extract row count
+            row_count = df.count()
+            logger.info(f"Table has {row_count} rows")
+            
             # Extract partition information
             partition_info = self._get_partition_info(df)
             
@@ -268,6 +275,7 @@ class SparkMetadataEngine:
                 "table_format": table_format,
                 "generated_at": datetime.utcnow().isoformat() + "Z",
                 "schema": schema_json,
+                "row_count": row_count,
                 "partitions": partition_info,
                 "files": file_stats,
                 "version_info": version_info
@@ -293,11 +301,9 @@ class SparkMetadataEngine:
             raise
         
         finally:
-            # Always cleanup Spark session (per-request pattern)
-            if self.spark:
-                logger.info("Stopping Spark session")
-                self.spark.stop()
-                self.spark = None
+            # Keep Spark session alive for reuse
+            # Stopping session after each operation causes "stopped SparkContext" errors
+            pass
     
     def convert_to_lakehouse(
         self,
@@ -449,11 +455,9 @@ class SparkMetadataEngine:
             raise
         
         finally:
-            # Always cleanup Spark session
-            if self.spark:
-                logger.info("Stopping Spark session")
-                self.spark.stop()
-                self.spark = None
+            # Keep Spark session alive for reuse
+            # Stopping session after each operation causes "stopped SparkContext" errors
+            pass
     
     def _get_partition_info(self, df) -> Dict[str, Any]:
         """

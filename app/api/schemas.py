@@ -610,13 +610,23 @@ class SnapshotDiffResponse(BaseModel):
     success: bool = Field(..., description="Whether comparison succeeded")
     snapshot1_id: str = Field(..., description="First snapshot ID")
     snapshot2_id: str = Field(..., description="Second snapshot ID")
+    snapshot1_timestamp: Optional[str] = Field(None, description="First snapshot timestamp")
+    snapshot2_timestamp: Optional[str] = Field(None, description="Second snapshot timestamp")
     schema_changes: Dict[str, Any] = Field(
         ...,
         description="Schema differences (added/removed columns, type changes)"
     )
+    data_changes: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Data differences (row count changes, percentage change)"
+    )
     file_changes: Dict[str, Any] = Field(
         ...,
         description="File differences (count change, size change)"
+    )
+    version_changes: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Version/transaction differences (Delta Lake version, operations, timestamps)"
     )
     error: Optional[str] = Field(None, description="Error message if failed")
     
@@ -626,6 +636,8 @@ class SnapshotDiffResponse(BaseModel):
                 "success": True,
                 "snapshot1_id": "snapshot_20260207_173045_a1b2c3d4",
                 "snapshot2_id": "snapshot_20260208_090000_ghi78901",
+                "snapshot1_timestamp": "2026-02-07T17:30:45Z",
+                "snapshot2_timestamp": "2026-02-08T09:00:00Z",
                 "schema_changes": {
                     "added_columns": ["new_feature_flag"],
                     "removed_columns": [],
@@ -637,9 +649,28 @@ class SnapshotDiffResponse(BaseModel):
                         }
                     ]
                 },
+                "data_changes": {
+                    "row_count_change": 1250,
+                    "old_row_count": 10000,
+                    "new_row_count": 11250,
+                    "percentage_change": 12.5
+                },
                 "file_changes": {
                     "file_count_change": 15,
-                    "size_change_bytes": 234567890
+                    "old_file_count": 100,
+                    "new_file_count": 115,
+                    "size_change_bytes": 234567890,
+                    "old_size_bytes": 1000000000,
+                    "new_size_bytes": 1234567890
+                },
+                "version_changes": {
+                    "old_version": 5,
+                    "new_version": 8,
+                    "version_difference": 3,
+                    "old_operation": "WRITE",
+                    "new_operation": "INSERT",
+                    "old_timestamp": "2026-02-07T17:30:00Z",
+                    "new_timestamp": "2026-02-08T09:00:00Z"
                 }
             }
         }

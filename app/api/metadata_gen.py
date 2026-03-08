@@ -530,8 +530,12 @@ async def compare_snapshots(request: SnapshotDiffRequest) -> SnapshotDiffRespons
             success=True,
             snapshot1_id=comparison['snapshot1_id'],
             snapshot2_id=comparison['snapshot2_id'],
+            snapshot1_timestamp=comparison.get('snapshot1_timestamp'),
+            snapshot2_timestamp=comparison.get('snapshot2_timestamp'),
             schema_changes=comparison['schema_changes'],
-            file_changes=comparison['file_changes']
+            data_changes=comparison.get('data_changes'),
+            file_changes=comparison['file_changes'],
+            version_changes=comparison.get('version_changes')
         )
         
     except Exception as e:

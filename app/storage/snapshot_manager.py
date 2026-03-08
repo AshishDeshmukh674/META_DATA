@@ -350,9 +350,12 @@ class SnapshotManager:
         """
         Compare two snapshots and return differences.
         
+        Automatically detects which snapshot is older based on timestamps
+        and correctly labels them as "old" and "new".
+        
         Args:
-            snapshot1: First snapshot metadata (older)
-            snapshot2: Second snapshot metadata (newer)
+            snapshot1: First snapshot metadata
+            snapshot2: Second snapshot metadata
             
         Returns:
             Dictionary with differences:
@@ -362,10 +365,19 @@ class SnapshotManager:
                     "removed_columns": [...],
                     "type_changes": [...]
                 },
+                "data_changes": {
+                    "row_count_change": int,
+                    "old_row_count": int,
+                    "new_row_count": int
+                },
                 "file_changes": {
-                    "added_files": int,
-                    "removed_files": int,
+                    "file_count_change": int,
                     "size_change_bytes": int
+                },
+                "version_changes": {
+                    "old_version": ...,
+                    "new_version": ...,
+                    "operations": [...]
                 },
                 "partition_changes": {
                     "added_partitions": [...],
@@ -374,37 +386,89 @@ class SnapshotManager:
             }
         """
         try:
-            # Schema changes
-            schema1_fields = {f['name']: f['type'] for f in snapshot1['schema']['fields']}
-            schema2_fields = {f['name']: f['type'] for f in snapshot2['schema']['fields']}
+            # Detect which snapshot is older based on timestamps
+            timestamp1 = snapshot1.get('generated_at', '')
+            timestamp2 = snapshot2.get('generated_at', '')
             
-            added_columns = [name for name in schema2_fields if name not in schema1_fields]
-            removed_columns = [name for name in schema1_fields if name not in schema2_fields]
+            # If snapshot1 is newer than snapshot2, swap them
+            if timestamp1 > timestamp2:
+                old_snapshot = snapshot2
+                new_snapshot = snapshot1
+                logger.info(f"Swapped snapshots: snapshot1 ({timestamp1}) is newer than snapshot2 ({timestamp2})")
+            else:
+                old_snapshot = snapshot1
+                new_snapshot = snapshot2
+                logger.info(f"Chronological order: snapshot1 ({timestamp1}) is older than snapshot2 ({timestamp2})")
+            
+            # Schema changes (old -> new)
+            schema_old_fields = {f['name']: f['type'] for f in old_snapshot['schema']['fields']}
+            schema_new_fields = {f['name']: f['type'] for f in new_snapshot['schema']['fields']}
+            
+            added_columns = [name for name in schema_new_fields if name not in schema_old_fields]
+            removed_columns = [name for name in schema_old_fields if name not in schema_new_fields]
             type_changes = [
-                {"column": name, "old_type": schema1_fields[name], "new_type": schema2_fields[name]}
-                for name in schema1_fields
-                if name in schema2_fields and schema1_fields[name] != schema2_fields[name]
+                {"column": name, "old_type": schema_old_fields[name], "new_type": schema_new_fields[name]}
+                for name in schema_old_fields
+                if name in schema_new_fields and schema_old_fields[name] != schema_new_fields[name]
             ]
             
-            # File changes
-            file_count1 = snapshot1['files'].get('file_count', 0)
-            file_count2 = snapshot2['files'].get('file_count', 0)
-            size1 = snapshot1['files'].get('total_size_bytes', 0)
-            size2 = snapshot2['files'].get('total_size_bytes', 0)
+            # Data changes (row count) - old -> new
+            row_count_old = old_snapshot.get('row_count', 0)
+            row_count_new = new_snapshot.get('row_count', 0)
+            row_count_change = row_count_new - row_count_old
             
-            # Build comparison result
+            # File changes - old -> new
+            file_count_old = old_snapshot['files'].get('file_count', 0)
+            file_count_new = new_snapshot['files'].get('file_count', 0)
+            size_old = old_snapshot['files'].get('total_size_bytes', 0)
+            size_new = new_snapshot['files'].get('total_size_bytes', 0)
+            
+            # Version changes (for Delta Lake) - old -> new
+            version_changes = {}
+            if old_snapshot.get('version_info') and new_snapshot.get('version_info'):
+                version_old = old_snapshot['version_info']
+                version_new = new_snapshot['version_info']
+                
+                if version_old.get('format') == 'delta' and version_new.get('format') == 'delta':
+                    old_version_num = version_old.get('version', 'unknown')
+                    new_version_num = version_new.get('version', 'unknown')
+                    
+                    version_changes = {
+                        "old_version": old_version_num,
+                        "new_version": new_version_num,
+                        "version_difference": new_version_num - old_version_num if isinstance(new_version_num, int) and isinstance(old_version_num, int) else 0,
+                        "old_operation": version_old.get('operation', 'UNKNOWN'),
+                        "new_operation": version_new.get('operation', 'UNKNOWN'),
+                        "old_timestamp": version_old.get('timestamp', 'unknown'),
+                        "new_timestamp": version_new.get('timestamp', 'unknown')
+                    }
+            
+            # Build comparison result (keep original snapshot IDs for reference)
             comparison = {
                 "snapshot1_id": snapshot1['snapshot_id'],
                 "snapshot2_id": snapshot2['snapshot_id'],
+                "snapshot1_timestamp": snapshot1.get('generated_at', 'unknown'),
+                "snapshot2_timestamp": snapshot2.get('generated_at', 'unknown'),
                 "schema_changes": {
                     "added_columns": added_columns,
                     "removed_columns": removed_columns,
                     "type_changes": type_changes
                 },
+                "data_changes": {
+                    "row_count_change": row_count_change,
+                    "old_row_count": row_count_old,
+                    "new_row_count": row_count_new,
+                    "percentage_change": round((row_count_change / row_count_old * 100), 2) if row_count_old > 0 else 0
+                },
                 "file_changes": {
-                    "file_count_change": file_count2 - file_count1,
-                    "size_change_bytes": size2 - size1
-                }
+                    "file_count_change": file_count_new - file_count_old,
+                    "old_file_count": file_count_old,
+                    "new_file_count": file_count_new,
+                    "size_change_bytes": size_new - size_old,
+                    "old_size_bytes": size_old,
+                    "new_size_bytes": size_new
+                },
+                "version_changes": version_changes if version_changes else None
             }
             
             logger.info(
@@ -413,7 +477,8 @@ class SnapshotManager:
                     "snapshot1": snapshot1['snapshot_id'],
                     "snapshot2": snapshot2['snapshot_id'],
                     "columns_added": len(added_columns),
-                    "columns_removed": len(removed_columns)
+                    "columns_removed": len(removed_columns),
+                    "row_count_change": row_count_change
                 }
             )
             

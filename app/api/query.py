@@ -56,6 +56,39 @@ class NLQueryResponse(BaseModel):
     error: Optional[str] = Field(None, description="Error message if failed")
 
 
+class DirectQueryRequest(BaseModel):
+    """Direct SQL query execution request."""
+    storage_type: str = Field(..., description="Storage type: aws or minio")
+    bucket: str = Field(..., description="S3 bucket name")
+    table_path: str = Field(..., description="Path to table within bucket")
+    table_format: str = Field(default="delta", description="Table format: delta, iceberg, hudi, parquet")
+    query: str = Field(..., description="SQL query to execute")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "storage_type": "aws",
+                "bucket": "metadataproject",
+                "table_path": "test-data/customer_data/customer_data_delta",
+                "table_format": "delta",
+                "query": "SELECT * FROM query_table LIMIT 10"
+            }
+        }
+
+
+class DirectQueryResponse(BaseModel):
+    """Direct SQL query execution response."""
+    status: str = Field(..., description="success or error")
+    query_type: str = Field(..., description="Type of query: read or write")
+    data: Optional[List[Any]] = Field(None, description="Query results for SELECT queries")
+    columns: Optional[List[str]] = Field(None, description="Column names for SELECT queries")
+    row_count: Optional[int] = Field(None, description="Number of rows returned/affected")
+    rows_affected: Optional[int] = Field(None, description="Number of rows affected for write operations")
+    message: Optional[str] = Field(None, description="Success message for write operations")
+    execution_time_seconds: Optional[float] = Field(None, description="Execution time in seconds")
+    error: Optional[str] = Field(None, description="Error message if failed")
+
+
 # ============================================================================
 # Endpoints
 # ============================================================================
@@ -200,3 +233,96 @@ async def natural_language_query(
             explanation="",
             error=str(e)
         )
+
+
+@router.post("/execute", response_model=DirectQueryResponse)
+async def execute_query(
+    request: DirectQueryRequest = Body(..., description="Direct SQL query execution request")
+) -> DirectQueryResponse:
+    """
+    Execute a direct SQL query against a table.
+    
+    This endpoint:
+    1. Accepts raw SQL queries
+    2. Executes them via Spark
+    3. Returns results or success message
+    
+    Supported operations:
+    - SELECT: Returns data rows
+    - UPDATE, INSERT, DELETE: Returns rows affected
+    - ALTER TABLE: Modifies table schema
+    
+    Note: Use 'query_table' as the table name in your SQL query.
+    
+    Example:
+    ```json
+    {
+      "storage_type": "aws",
+      "bucket": "metadataproject",
+      "table_path": "test-data/customer_data/customer_data_delta",
+      "table_format": "delta",
+      "query": "SELECT * FROM query_table WHERE City = 'Mumbai' LIMIT 10"
+    }
+    ```
+    """
+    start_time = time.time()
+    
+    logger.info(
+        f"Direct SQL query received",
+        extra={
+            "storage_type": request.storage_type,
+            "bucket": request.bucket,
+            "table_path": request.table_path,
+            "table_format": request.table_format,
+            "query": request.query[:200]  # Truncate for logging
+        }
+    )
+    
+    try:
+        # Execute query via Spark engine
+        query_engine = SparkQueryEngine()
+        
+        result = query_engine.execute_query(
+            storage_type=request.storage_type,
+            bucket=request.bucket,
+            table_path=request.table_path,
+            table_format=request.table_format,
+            query=request.query
+        )
+        
+        execution_time = time.time() - start_time
+        
+        # Build response based on query type
+        query_type = result.get("query_type", "read")
+        
+        if query_type == "read":
+            return DirectQueryResponse(
+                status="success",
+                query_type=query_type,
+                data=result.get("data", []),
+                columns=result.get("columns", []),
+                row_count=result.get("row_count", 0),
+                execution_time_seconds=execution_time
+            )
+        else:  # write operation
+            return DirectQueryResponse(
+                status="success",
+                query_type=query_type,
+                rows_affected=result.get("rows_affected", 0),
+                message=result.get("message", "Operation completed successfully"),
+                execution_time_seconds=execution_time
+            )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        execution_time = time.time() - start_time
+        logger.error(f"Query execution failed: {e}", exc_info=True)
+        
+        return DirectQueryResponse(
+            status="error",
+            query_type="unknown",
+            error=str(e),
+            execution_time_seconds=execution_time
+        )
+

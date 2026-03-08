@@ -163,10 +163,8 @@ class SparkQueryEngine:
                 
                 logger.info(f"Write operation completed in {execution_time_ms}ms")
                 
-                # Stop Spark session
-                if self.spark:
-                    self.spark.stop()
-                    self.spark = None
+                # Keep Spark session alive for reuse
+                # Stopping session causes "stopped SparkContext" errors
                 
                 return {
                     "success": True,
@@ -202,10 +200,8 @@ class SparkQueryEngine:
                 
                 logger.info(f"Query executed: {len(data)} rows in {execution_time_ms}ms")
                 
-                # Stop Spark session
-                if self.spark:
-                    self.spark.stop()
-                    self.spark = None
+                # Keep Spark session alive for reuse
+                # Stopping session causes "stopped SparkContext" errors
                 
                 return {
                     "success": True,
@@ -218,13 +214,8 @@ class SparkQueryEngine:
         except Exception as e:
             logger.error(f"Query execution failed: {e}", exc_info=True)
             
-            # Stop Spark session on error
-            if self.spark:
-                try:
-                    self.spark.stop()
-                except:
-                    pass
-                self.spark = None
+            # Keep Spark session alive even on error
+            # Stopping causes "stopped SparkContext" errors on retry
             
             execution_time_ms = int((time.time() - start_time) * 1000)
             
@@ -239,8 +230,32 @@ class SparkQueryEngine:
     
     def _create_spark_session(self, storage_type: str):
         """Create Spark session with appropriate configuration."""
+        # Validate existing session if available
         if self.spark:
-            return
+            try:
+                if not self.spark.sparkContext._jsc.sc().isStopped():
+                    logger.info("Reusing existing Spark session from instance")
+                    return
+                else:
+                    logger.warning("Instance Spark session is stopped, creating new one")
+                    self.spark = None
+            except Exception as e:
+                logger.warning(f"Error checking instance session, will create new: {e}")
+                self.spark = None
+        
+        # Check for active session and reuse it
+        try:
+            existing_spark = SparkSession.getActiveSession()
+            if existing_spark and not existing_spark.sparkContext._jsc.sc().isStopped():
+                logger.info("Reusing existing active Spark session")
+                self.spark = existing_spark
+                return
+            elif existing_spark:
+                logger.warning("Found stopped Spark session, creating new one")
+        except Exception as e:
+            logger.debug(f"No active session to reuse: {e}")
+        
+        logger.info(f"Creating new Spark session for query engine")
         
         builder = SparkSession.builder \
             .appName("LakehouseQueryEngine") \

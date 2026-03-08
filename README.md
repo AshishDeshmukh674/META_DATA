@@ -1,1902 +1,1355 @@
-# 🏔️ Lakehouse Metadata & Query Platform
+# 🏔️ Lakehouse Explorer - AI-Powered Data Platform
 
-**An AI-powered data lakehouse platform that discovers, manages, and queries Delta Lake tables on AWS S3 using natural language - no SQL or metastore required.**
+**A production-ready data lakehouse platform that automatically discovers, manages, and queries Delta Lake tables on AWS S3 using natural language - no SQL knowledge or metastore setup required.**
+
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.109.0-009688.svg)](https://fastapi.tiangolo.com)
+[![Next.js](https://img.shields.io/badge/Next.js-14.1.0-000000.svg)](https://nextjs.org)
+[![Apache Spark](https://img.shields.io/badge/Apache%20Spark-3.5.1-E25A1C.svg)](https://spark.apache.org)
+[![Delta Lake](https://img.shields.io/badge/Delta%20Lake-3.2.0-003366.svg)](https://delta.io)
+[![Python](https://img.shields.io/badge/Python-3.12-3776AB.svg)](https://python.org)
 
 ---
 
-## 📖 What This Project Is
+## 📑 Table of Contents
 
-This is a **real-world implementation** of a modern data lakehouse platform with **AI-powered natural language queries** that solves critical problems:
-- **How do you query Delta Lake tables stored in S3 without setting up complex metastore infrastructure?**
-- **How do you make data accessible to non-technical users without requiring SQL knowledge?**
+- [Project Overview](#-project-overview)
+- [Key Features](#-key-features)
+- [Architecture](#️-architecture)
+- [Tech Stack](#-tech-stack)
+- [Prerequisites](#-prerequisites)
+- [Installation & Setup](#️-installation--setup)
+- [Running the Project](#-running-the-project)
+- [API Documentation](#-api-documentation)
+- [Frontend Pages](#-frontend-pages)
+- [Usage Examples](#-usage-examples)
+- [Project Structure](#-project-structure)
+- [Troubleshooting](#-troubleshooting)
+
+---
+
+## 📖 Project Overview
+
+### What is Lakehouse Explorer?
+
+Lakehouse Explorer is an enterprise-grade data platform that bridges the gap between technical and non-technical users. It enables anyone to discover, query, and manage data stored in modern lakehouse formats (Delta Lake, Iceberg, Hudi, Parquet) on AWS S3 without requiring:
+
+- ❌ Complex metastore setup (Hive, Glue Catalog)
+- ❌ SQL knowledge
+- ❌ Manual table registration
+- ❌ Expensive managed services
 
 ### The Problem We Solved
 
-Traditional data warehouses require:
-- ❌ Complex metastore setup (Hive Metastore, AWS Glue Catalog)
-- ❌ Expensive managed services
-- ❌ Tight coupling between compute and metadata
-- ❌ Manual table registration processes
+**Traditional Data Lakehouse Challenges:**
+
+1. **Metadata Management** - Requires external metastores (Hive, AWS Glue) that are complex to set up and maintain
+2. **Technical Barrier** - Non-technical users cannot access data without SQL knowledge
+3. **Discovery** - Finding and understanding available datasets is difficult
+4. **Version Control** - Tracking data changes and time travel capabilities are hidden in technical logs
+5. **Query Performance** - Single query engine can't optimize for both fast queries and historical snapshots
 
 ### Our Solution
 
-✅ **Metastore-less architecture** - Metadata lives with data in `_delta_log/`  
-✅ **Auto-discovery** - Automatically detect and read table schemas  
-✅ **Dual query engines** - Spark for time travel, Trino for fast analytics  
-✅ **Natural language queries** - Ask in plain English, get SQL + results  
-✅ **AI-powered** - Groq LLM converts "Show customers from Mumbai" to SQL  
-✅ **Custom snapshots** - Version control for data with automatic metadata  
-✅ **REST API** - Easy integration with any application  
+✅ **Metastore-less Architecture** - Reads metadata directly from Delta Lake's `_delta_log/` transaction logs  
+✅ **AI-Powered Natural Language Queries** - Ask questions in plain English using Groq LLM  
+✅ **Automatic Discovery** - Detects table format and reads schema automatically  
+✅ **Dual Query Engines** - Spark for time travel + Trino for fast analytics  
+✅ **Custom Snapshot System** - Business-friendly versioning with rich metadata  
+✅ **Write Operations** - UPDATE/INSERT/DELETE via natural language  
+✅ **Modern Web UI** - React-based frontend with real-time results  
+✅ **REST API** - Easy integration with existing systems  
 
 ---
 
-## 🎯 What We Built (The Journey)
+## 🎯 Key Features
 
-### Phase 1-4: Foundation ✅
-- Environment setup (Docker, Python, AWS credentials)
-- FastAPI skeleton with health checks
-- AWS S3 connectivity validation
-- Automatic table format detection (Delta/Iceberg/Hudi/Parquet)
+### 1. **Automatic Metadata Discovery**
+- Detects table format (Delta Lake, Iceberg, Hudi, Parquet)
+- Reads schema, partitions, and statistics from `_delta_log/`
+- No manual registration or configuration required
+- Works with any S3-compatible storage (AWS S3, MinIO)
 
-### Phase 5: Metadata Discovery ✅
-- Read Delta Lake transaction logs (`_delta_log/`)
-- Extract schema, partitions, and file information
-- No metastore required - direct S3 reading
+### 2. **Natural Language Queries (AI-Powered)**
+- **Read Operations**: "Show me all customers from Mumbai"
+- **Aggregations**: "Count customers by city"
+- **Filters**: "Find customers with gmail email addresses"
+- **Updates**: "Set name to 'John Doe' where customer ID is C001"
+- **Inserts**: "Add a new customer with ID C100, name Sarah"
+- **Deletes**: "Delete customer with ID C999"
+- Powered by **Groq API** with Llama 3.3 70B model (800ms response time)
+- Automatically generates optimized SQL
+- Returns results in JSON format with explanation
 
-### Phase 6: Delta Snapshot System ✅
-**Why:** Delta Lake's `_delta_log/` is technical. We needed business-friendly snapshots.
+### 3. **Custom Snapshot System**
+- Create named snapshots of Delta tables with rich metadata
+- Store in `.metadata-snapshots/` alongside data
+- Track schema evolution, file counts, row counts, data size
+- Enable time travel for business users
+- Compare snapshots to understand data changes over time
+- Supports versioning and rollback capabilities
 
-**What we built:**
-- Convert CSV → Delta Lake format
-- Generate custom snapshot metadata (`.metadata-snapshots/`)
-- Store schema, version, file counts, and timestamps
-- Enable easy time travel for non-technical users
+### 4. **Dual Query Engine**
+- **Apache Spark 3.5.1** - For snapshot queries and historical data access (supports time travel)
+- **Trino 435** - For fast queries on current data (100ms response time)
+- Automatic query routing based on operation type
+- One-time sync endpoint to register tables in Trino catalog
 
-**Real example:**
-```
-s3://metadataproject/test-data/customer_data/customer_data_delta/
-├── _delta_log/                    # Delta's technical logs
-│   ├── 00000000000000000000.json
-│   └── ...
-├── .metadata-snapshots/           # Our business-friendly snapshots
-│   ├── snapshot_20260213_044224_cf52ef3e.json
-│   ├── snapshot_20260213_044300_abc123de.json
-│   └── ...
-└── part-*.parquet                 # Actual data files
-```
+### 5. **Write Operations (Delta Lake ACID)**
+- UPDATE records based on conditions
+- INSERT new records
+- DELETE existing records
+- All operations use Delta Lake's ACID transactions
+- Automatic transaction log management
+- Support for complex WHERE clauses
 
-### Phase 7: Query Execution ✅
-**Why:** Users need to query data, not just see metadata.
-
-**The Challenge:** 
-- Spark is slow (30-60 seconds) but supports time travel
-- Trino is fast (100ms) but needs table registration
-- How do we get the best of both?
-
-**Our Solution:**
-1. **Snapshot Queries** - Use Spark for time travel to any historical version
-2. **Fast Queries** - Use Trino for current data after one-time registration
-3. **Auto-sync endpoint** - Automatically register Delta tables in Trino
-
-### Phase 8: Natural Language Queries ✅
-**Why:** SQL is powerful but requires technical knowledge. Business users need simple, natural language queries.
-
-**The Challenge:**
-- Non-technical users struggle with SQL syntax
-- Column names and table structures are hard to remember
-- Complex JOINs and aggregations require expertise
-- How do we make data accessible to everyone?
-
-**Our Solution:**
-We integrated **Groq API (llama-3.3-70b-versatile)** to convert natural language to SQL:
-
-**Real Examples:**
-- "Show me all customers from Mumbai" → `SELECT * FROM ... WHERE city = 'Mumbai'`
-- "Count customers per city" → `SELECT city, COUNT(*) as count FROM ... GROUP BY city`
-- "Find customers with gmail addresses" → `SELECT * FROM ... WHERE email LIKE '%@gmail.com'`
-
-**How It Works:**
-1. User sends natural language query
-2. System reads table schema from Delta `_delta_log/`
-3. LLM receives: user query + table schema + available columns
-4. LLM generates SQL query
-5. Query executes on Trino (fast) or Spark (time travel)
-6. Results returned with metadata
-
-**Performance:**
-- Natural language → SQL conversion: ~800ms
-- Total query time: ~1-2 seconds (Trino) or ~30-60s (Spark with time travel)
-
-**Technology Stack:**
-- **LLM Provider:** Groq API
-- **Model:** llama-3.3-70b-versatile (70B parameters)
-- **Response Time:** 800ms average
-- **Integration:** Direct API (no complex prompting framework)
+### 6. **Modern Web UI**
+- **Explorer**: Browse S3 buckets and discover tables
+- **Metadata Viewer**: See schema, statistics, and table information
+- **Natural Language Query**: Ask questions in plain English with AI
+- **SQL Query**: Execute custom SQL with Trino for fast results
+- **Snapshot Manager**: Create, view, and compare snapshots
+- **Settings**: Configure AWS credentials and storage backends
 
 ---
 
 ## 🏗️ Architecture
 
+### System Architecture Diagram
+
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                         USER / APPLICATION                   │
-│                   "Show me customers from Mumbai"            │
-└────────────┬───────────────────────────────────┬────────────┘
-             │                                   │
-    ┌────────▼────────┐                 ┌───────▼────────┐
-    │   FASTAPI       │                 │   SWAGGER UI   │
-    │   Port: 8001    │                 │   /docs        │
-    └────────┬────────┘                 └────────────────┘
-             │
-   ┌─────────▼─────────────────────────────────────────────┐
-   │         NATURAL LANGUAGE QUERY ENGINE (Phase 8)       │
-   │  Natural Language → SQL Conversion (800ms)           │
-   │                                                       │
-   │  ┌───────────────┐      ┌──────────────────────┐    │
-   │  │  Read Schema  │  →   │   Groq API (LLM)     │    │
-   │  │  from Delta   │      │  llama-3.3-70b       │    │
-   │  │  _delta_log/  │      │  Returns SQL         │    │
-   │  └───────────────┘      └──────────────────────┘    │
-   └───────────────────────────┬───────────────────────────┘
-                               │
-   ┌───────────────────────────▼───────────────────────────┐
-   │         QUERY ROUTING LAYER                           │
-   │  "Should this use Spark or Trino?"                   │
-   └─────────┬──────────────────────┬────────────────────┘
-             │                      │
-   ┌─────────▼──────────┐  ┌───────▼──────────┐
-   │  SPARK 3.5.1       │  │  TRINO 435       │
-   │  (Time Travel)     │  │  (Fast Queries)  │
-   │                    │  │                  │
-   │  • Slow: 30-60s    │  │  • Fast: 100ms   │
-   │  • Any version     │  │  • Current only  │
-   │  • Auto-discovers  │  │  • Needs sync    │
-   └─────────┬──────────┘  └───────┬──────────┘
-             │                     │
-             └──────────┬──────────┘
-                        │
-              ┌─────────▼────────────┐
-              │      AWS S3          │
-              │   metadataproject    │
-              │                      │
-              │  customer_data_      │
-              │     delta/           │
-              │  ├─ _delta_log/      │
-              │  ├─ .metadata-       │
-              │  │   snapshots/      │
-              │  └─ part-*.parquet   │
-              └──────────────────────┘
+┌─────────────────────────────────────────────────────────────────────┐
+│                          Frontend (Next.js 14)                       │
+│                           Port: 3001                                 │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌─────────┐ │
+│  │ Explorer │ │ Metadata │ │ NL Query │ │ SQL Query│ │Snapshots│ │
+│  └──────────┘ └──────────┘ └──────────┘ └──────────┘ └─────────┘ │
+└─────────────────────────────┬───────────────────────────────────────┘
+                              │ REST API
+┌─────────────────────────────┴───────────────────────────────────────┐
+│                       Backend (FastAPI)                              │
+│                        Port: 8000                                   │
+│  ┌───────────────────────────────────────────────────────────┐     │
+│  │            API Layer (REST Endpoints)                      │     │
+│  │  • Health   • Connection   • Detect   • Metadata          │     │
+│  │  • Metadata Gen   • Query (Natural Language + SQL)        │     │
+│  └──────────────┬────────────────────┬───────────────────────┘     │
+│                 │                    │                             │
+│  ┌──────────────▼──────┐  ┌──────────▼─────────────────────┐      │
+│  │  Natural Language   │  │    Query Engines                │      │
+│  │  Engine (Groq API)  │  │  ┌──────────┐  ┌──────────┐    │      │
+│  │  llama-3.3-70b      │  │  │  Spark   │  │  Trino   │    │      │
+│  │                     │  │  │  Query   │  │  Query   │    │      │
+│  │  NL → SQL           │  │  │  Engine  │  │  Engine  │    │      │
+│  │  (800ms)            │  │  └──────────┘  └──────────┘    │      │
+│  └─────────────────────┘  └───────────────────────────┘      │
+│                                                                     │
+│  ┌─────────────────────────────────────────────────────────────┐   │
+│  │          Metadata & Snapshot Management                      │   │
+│  │  • spark_metadata_engine.py - Delta log reader             │   │
+│  │  • Snapshot creation and versioning                        │   │
+│  │  • Schema extraction and statistics                        │   │
+│  └─────────────────────────────────────────────────────────────┘   │
+└─────────────────────────────┬───────────────────────────────────────┘
+                              │
+┌─────────────────────────────┴───────────────────────────────────────┐
+│                      Apache Spark Cluster                            │
+│                      (Dockerized)                                   │
+│  ┌──────────────────┐          ┌──────────────────┐                │
+│  │  Spark Master    │          │  Spark Worker    │                │
+│  │  Port: 7077      │◄─────────│  2G RAM, 2 Cores │                │
+│  │  UI: 8081        │          │                  │                │
+│  └──────────────────┘          └──────────────────┘                │
+└─────────────────────────────┬───────────────────────────────────────┘
+                              │
+┌─────────────────────────────┴───────────────────────────────────────┐
+│                         AWS S3 Storage                               │
+│                    Bucket: metadataproject                          │
+│                                                                     │
+│  test-data/customer_data/customer_data_delta/                      │
+│  ├── _delta_log/                  # Delta Lake transaction logs    │
+│  │   ├── 00000000000000000000.json                                │
+│  │   ├── 00000000000000000001.json                                │
+│  │   └── ...                                                       │
+│  ├── .metadata-snapshots/         # Our custom snapshots           │
+│  │   ├── snapshot_20260301_120000_abc123.json                     │
+│  │   └── snapshot_20260301_130000_def456.json                     │
+│  └── part-00000-*.parquet         # Actual data files              │
+└─────────────────────────────────────────────────────────────────────┘
 ```
+
+### Data Flow
+
+1. **User Request** → Frontend sends natural language query
+2. **API Gateway** → FastAPI receives request and routes to appropriate handler
+3. **NL Processing** → Groq LLM converts natural language to SQL
+4. **Query Routing** → System decides between Spark (time travel) or Trino (fast)
+5. **Execution** → Query engine reads from S3 and executes SQL
+6. **Response** → Results returned with metadata and explanation
 
 ---
 
-## 💡 Why We Chose Each Technology
+## 🛠️ Tech Stack
 
-### Groq API (Natural Language - Phase 8)
-**Why not OpenAI/Anthropic/AWS Bedrock?**
-- ✅ Ultra-fast inference (800ms for 70B model)
-- ✅ Free tier available
-- ✅ Simple REST API (no complex setup)
-- ✅ llama-3.3-70b-versatile excellent for SQL generation
-- ✅ Cost-effective at scale
-- ❌ Requires internet connection (no offline mode)
+### Backend
+- **FastAPI 0.109.0** - Modern Python web framework for APIs
+- **Python 3.12** - Core programming language
+- **PySpark 3.5.1** - Distributed data processing
+- **Delta Lake 3.2.0** - ACID transactions on data lakes
+- **Groq API** - AI-powered natural language processing (llama-3.3-70b-versatile)
+- **Trino** - Fast distributed SQL query engine
+- **Boto3** - AWS SDK for S3 access
 
-### FastAPI (REST API Layer)
-**Why not Flask/Django?**
-- ✅ Auto-generated API documentation (Swagger UI)
-- ✅ Type validation with Pydantic
-- ✅ Async support for better performance
-- ✅ Modern Python 3.10+ features
+### Frontend
+- **Next.js 14.1.0** - React framework with server-side rendering
+- **React 18** - UI component library
+- **TypeScript** - Type-safe JavaScript
+- **Tailwind CSS** - Utility-first CSS framework
+- **Shadcn/UI** - High-quality UI components
 
-### Apache Spark (Write Engine & Time Travel)
-**Why not just Trino?**
-- ✅ Native Delta Lake support
-- ✅ Reads `_delta_log/` automatically
-- ✅ Supports time travel queries
-- ✅ Can write to Delta format
-- ❌ Slow for interactive queries (30-60 seconds)
+### Infrastructure
+- **Docker & Docker Compose** - Containerization
+- **Apache Spark 3.5.1** - Distributed computing cluster
+- **Java 17** - Required for Spark
+- **Hadoop AWS 3.3.4** - S3A filesystem support
 
-### Trino (Fast Query Engine)
-**Why not just Spark?**
-- ✅ 100-500ms query execution (vs 30-60s with Spark)
-- ✅ Designed for interactive analytics
-- ✅ Supports standard SQL
-- ❌ Needs table registration (can't read `_delta_log/` directly)
-- ❌ No time travel support
-
-### Delta Lake (Storage Format)
-**Why not Iceberg/Hudi/Parquet?**
-- ✅ ACID transactions
-- ✅ Time travel (query old versions)
-- ✅ Schema evolution
-- ✅ Scalable metadata (`_delta_log/` is just JSON files)
-- ✅ Battle-tested by Databricks
-
-### Docker (Infrastructure)
-**Why not install everything locally?**
-- ✅ Consistent environments (works on any machine)
-- ✅ Easy cleanup (remove containers, not reinstall software)
-- ✅ Production-like setup
-- ✅ Multiple services (Spark, Trino) isolated
+### Storage
+- **AWS S3** - Object storage for data lakes
+- **Delta Lake** - Storage format with ACID properties
 
 ---
 
-## 🐛 Mistakes We Made & How We Fixed Them
+## 📋 Prerequisites
 
-### Mistake 1: Using CREATE TABLE for Existing Delta Data
-**What happened:** Tried to register Delta table in Trino with `CREATE TABLE ... WITH (location = 's3://...')`
+### Required Software
 
-**Error:**
-```
-Using CREATE TABLE with an existing table content is disallowed
-```
+1. **Python 3.12+**
+   ```powershell
+   python --version
+   # Should show: Python 3.12.x
+   ```
 
-**Why it failed:** Trino's Delta connector expects clean locations for CREATE TABLE. Existing data must use `register_table()` procedure.
+2. **Java 17** (Required for Apache Spark)
+   ```powershell
+   java -version
+   # Should show: openjdk version "17.x.x"
+   ```
+   
+   **Download:** [Amazon Corretto 17](https://docs.aws.amazon.com/corretto/latest/corretto-17-ug/downloads-list.html)
 
-**Solution:**
-```sql
--- ❌ Wrong
-CREATE TABLE delta.default.customer_data_delta (...) WITH (location = 's3://...')
+3. **Node.js 18+** (For frontend)
+   ```powershell
+   node --version
+   # Should show: v18.x.x or higher
+   ```
+   
+   **Download:** [Node.js Official](https://nodejs.org/)
 
--- ✅ Correct
-CALL delta.system.register_table(
-  schema_name => 'default',
-  table_name => 'customer_data_delta',
-  table_location => 's3://metadataproject/test-data/customer_data/customer_data_delta/'
-)
-```
+4. **Docker Desktop**
+   - **Download:** [Docker Desktop for Windows](https://docs.docker.com/desktop/install/windows-install/)
+   - Ensure Docker is running before starting the project
 
-**Impact:** Updated `/query/sync-table` endpoint to use `register_table()` instead of `CREATE TABLE`.
+### AWS Credentials
 
----
+You'll need AWS credentials with S3 access:
+- AWS Access Key ID
+- AWS Secret Access Key
+- S3 Bucket Name
 
-### Mistake 2: Duplicate API Tags in Swagger UI
-**What happened:** All endpoints appeared twice in Swagger UI under different sections.
+### Groq API Key (For Natural Language Queries)
 
-**Why it failed:** Tags defined in both `router = APIRouter(tags=["X"])` and `app.include_router(router, tags=["Y"])`.
-
-**Solution:** Removed duplicate tags from router definitions, kept only in `main.py`.
-
-**Before:**
-```
-Query Execution (Phase 7)
-  - POST /query/execute
-  - POST /query/execute/simple
-  ...
-
-Query Execution  
-  - POST /query/execute  (duplicate!)
-  - POST /query/execute/simple  (duplicate!)
-  ...
-```
-
-**After:**
-```
-Query Execution (Phase 7)
-  - POST /query/execute
-  - POST /query/execute/simple
-  ...
-```
+Get a free API key from [Groq Console](https://console.groq.com/keys)
 
 ---
 
-### Mistake 3: Schema Not Found Error
-**What happened:** `/query/execute` failed with "Schema 'default' does not exist"
+## 🚀 Installation & Setup
 
-**Why it failed:** Trino catalogs are completely separate. Having a Delta connector doesn't mean tables are registered.
+### Step 1: Clone the Repository
 
-**The confusion:** Spark can query `s3://bucket/path/` directly. Trino needs explicit registration.
-
-**Solution:** Created `/query/sync-table` endpoint to register tables before querying.
-
-**Workflow now:**
-```
-1. Generate Delta table → /metadata/generate
-2. Register in Trino  → /query/sync-table
-3. Fast queries work  → /query/execute
-```
-
----
-
-### Mistake 4: Confusing Snapshot Queries with Trino Queries
-**User confusion:** "Why do some queries need `storage_type`, `bucket`, `table_path` and others need `sql`?"
-
-**Why this happened:** Two different query systems with different purposes.
-
-**Clarification:**
-- **Snapshot Queries** (`/query/execute/snapshot`): Spark-based, time travel, needs S3 params
-- **Trino Queries** (`/query/execute`): Trino-based, fast, needs SQL with registered table names
-
----
-
-## 🗂️ Our Real Data Structure
-
-**S3 Bucket:** `metadataproject`  
-**Table Path:** `test-data/customer_data/customer_data_delta`  
-**Format:** Delta Lake  
-**Columns:** CustomerID, Name, Email, City  
-**Row Count:** 3 rows  
-**Files:** 3 parquet files (~2.1 KB each)  
-**Snapshots:** 4 versions available  
-
-**Full S3 Structure:**
-```
-s3://metadataproject/
-└── test-data/
-    └── customer_data/
-        ├── customer_data.csv                    # Original source
-        └── customer_data_delta/                 # Delta Lake table
-            ├── _delta_log/                      # Delta transaction log
-            │   ├── 00000000000000000000.json    # Version 0
-            │   ├── 00000000000000000001.json
-            │   └── _last_checkpoint
-            ├──metadata-snapshots/             # Our custom snapshots
-            │   ├── snapshot_20260213_044224_cf52ef3e.json
-            │   ├── snapshot_20260213_044300_abc123de.json
-            │   ├── snapshot_20260213_044315_def456gh.json
-            │   └── snapshot_20260213_044330_ghi789jk.json
-            ├── part-00000-*.snappy.parquet      # Data file 1
-            ├── part-00001-*.snappy.parquet      # Data file 2
-            └── part-00002-*.snappy.parquet      # Data file 3
-```
-
-**Sample Data:**
-| CustomerID | Name  | Email           | City   |
-|------------|-------|-----------------|--------|
-| 1          | Alice | alice@email.com | Mumbai |
-| 2          | Bob   | bob@email.com   | Delhi  |
-| 3          | Carol | carol@email.com | Mumbai |
-
----
-
-## 🚀 Quick Start Guide
-
-### Prerequisites
-- **Windows** (or Linux/Mac with minor command changes)
-- **Python 3.10+** installed
-- **Docker Desktop** running
-- **AWS Account** with S3 access
-
-### Step 1: Clone Repository
 ```powershell
-git clone https://github.com/AshishDeshmukh674/META_DATA.git
-cd METAL
+git clone <repository-url>
+cd META
 ```
 
-### Step 2: Create Virtual Environment
+### Step 2: Java Setup (Required for Spark)
+
+1. **Download Java 17:**
+   - Go to [Amazon Corretto 17](https://docs.aws.amazon.com/corretto/latest/corretto-17-ug/downloads-list.html)
+   - Download the Windows x64 MSI installer
+   - Install with default settings
+
+2. **Set JAVA_HOME Environment Variable:**
+   ```powershell
+   # Check Java installation
+   java -version
+   
+   # Find Java installation path
+   where java
+   # Example: C:\Program Files\Amazon Corretto\jdk17.0.x\bin\java.exe
+   
+   # Set JAVA_HOME (adjust path as needed)
+   setx JAVA_HOME "C:\Program Files\Amazon Corretto\jdk17.0.x"
+   
+   # Verify
+   echo $env:JAVA_HOME
+   ```
+
+3. **Add to PATH:**
+   ```powershell
+   # Add Java bin to PATH
+   setx PATH "$env:PATH;$env:JAVA_HOME\bin"
+   ```
+
+### Step 3: Spark Configuration
+
+Spark is automatically configured via Docker. The setup includes:
+- Spark Master on port 7077
+- Spark Worker with 2G RAM and 2 cores
+- Spark UI accessible at http://localhost:8081
+
+**Docker Compose Configuration:**
+```yaml
+spark-master:
+  image: apache/spark:3.5.1
+  ports:
+    - "7077:7077"   # Spark master
+    - "8081:8080"   # Spark UI
+
+spark-worker:
+  image: apache/spark:3.5.1
+  environment:
+    - SPARK_WORKER_MEMORY=2G
+    - SPARK_WORKER_CORES=2
+```
+
+### Step 4: Python Backend Setup
+
+1. **Create Virtual Environment:**
+   ```powershell
+   python -m venv .venv
+   ```
+
+2. **Activate Virtual Environment:**
+   ```powershell
+   .\.venv\Scripts\Activate.ps1
+   ```
+
+3. **Install Dependencies:**
+   ```powershell
+   pip install -r requirements.txt
+   ```
+
+### Step 5: Environment Configuration
+
+1. **Create `.env` file:**
+   ```powershell
+   Copy-Item .env.example .env
+   ```
+
+2. **Edit `.env` with your credentials:**
+   ```env
+   # AWS Configuration
+   AWS_ACCESS_KEY_ID=your_access_key_here
+   AWS_SECRET_ACCESS_KEY=your_secret_key_here
+   AWS_REGION=us-east-1
+   AWS_S3_BUCKET=your_bucket_name
+
+   # Groq API (Natural Language Queries)
+   GROQ_API_KEY=gsk_your_groq_api_key_here
+
+   # Spark Configuration
+   SPARK_MASTER=spark://localhost:7077
+
+   # API Configuration
+   API_HOST=0.0.0.0
+   API_PORT=8000
+   ALLOWED_ORIGINS=http://localhost:3000,http://localhost:3001
+   ```
+
+### Step 6: Frontend Setup
+
 ```powershell
-python -m venv .venv
-.venv\Scripts\Activate.ps1
+cd frontend
+npm install
+cd ..
 ```
 
-### Step 3: Install Dependencies
+### Step 7: Docker Setup
+
+Ensure Docker Desktop is running, then build the containers:
+
 ```powershell
-pip install -r requirements.txt
+docker-compose build
 ```
 
-### Step 4: Configure Environment
+---
+
+## 🏃 Running the Project
+
+### Option 1: Start Everything with Docker Compose (Recommended)
+
 ```powershell
-Copy-Item .env.example .env
-```
-
-**Edit `.env` with your credentials:**
-```env
-# AWS Credentials (required)
-AWS_ACCESS_KEY_ID=AKIA...
-AWS_SECRET_ACCESS_KEY=...
-AWS_REGION=us-east-1
-
-# Groq API Key (required for natural language queries - Phase 8)
-# Get free key from: https://console.groq.com/
-GROQ_API_KEY=gsk_your_api_key_here
-```
-
-**Note:** Groq API key is needed for `/query/natural` endpoint (Phase 8). Other endpoints work without it.
-
-### Step 5: Start Docker Services
-```powershell
+# Start all services (backend, Spark master, Spark worker)
 docker-compose up -d
-Start-Sleep -Seconds 30  # Wait for containers to be ready
+
+# Check status
+docker-compose ps
+
+# View logs
+docker-compose logs -f fastapi
 ```
 
-**Verify containers:**
+**Services Started:**
+- FastAPI Backend: http://localhost:8000
+- Spark Master: http://localhost:7077
+- Spark UI: http://localhost:8081
+
+### Option 2: Start Services Individually
+
+**1. Start Spark Cluster:**
 ```powershell
-docker ps
+docker-compose up -d spark-master spark-worker
 ```
 
-Should show:
-- `lakehouse-api` (FastAPI)
-- `spark-master`
-- `spark-worker`
-- `lakehouse-trino`
+**2. Start Backend:**
+```powershell
+# Option A: With Docker
+docker-compose up -d fastapi
 
-### Step 6: Access the Platform
-- **API Docs:** http://localhost:8000/docs
-- **Trino UI:** http://localhost:8082
-- **Spark UI:** http://localhost:8081
+# Option B: Locally (for development)
+.\.venv\Scripts\Activate.ps1
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+**3. Start Frontend:**
+```powershell
+cd frontend
+npm run dev
+```
+
+### Accessing the Services
+
+| Service | URL | Description |
+|---------|-----|-------------|
+| Frontend | http://localhost:3001 | Web UI |
+| Backend API | http://localhost:8000 | REST API |
+| API Documentation | http://localhost:8000/docs | Swagger UI |
+| Spark Master UI | http://localhost:8081 | Spark Cluster Status |
+
+### Stopping Services
+
+```powershell
+# Stop all services
+docker-compose down
+
+# Stop and remove volumes
+docker-compose down -v
+```
 
 ---
 
-## 📚 Complete API Reference
+## 📡 API Documentation
 
-### Phase 6: Metadata Generation
+### Base URL
+```
+http://localhost:8000
+```
 
-#### POST /metadata/generate
-**Purpose:** Convert CSV to Delta Lake format and generate snapshots
+### Authentication
+Currently, the API does not require authentication (suitable for development/internal use).
 
-**Why this exists:** Delta Lake needs setup. This endpoint automates: CSV reading → Spark conversion → Delta write → Snapshot generation.
+---
 
-**Real Example:**
-```powershell
-$body = @{
-    storage_type = "aws"
-    bucket = "metadataproject"
-    path = "test-data/customer_data/customer_data.csv"
-    table_format = "delta"
-    force_refresh = $false
-} | ConvertTo-Json
+### 1. Health Check API
 
-Invoke-RestMethod -Uri "http://localhost:8000/metadata/generate" `
-    -Method Post `
-    -ContentType "application/json" `
-    -Body $body
+**Purpose:** Verify that the backend service is running and healthy.
+
+#### `GET /health`
+
+**Description:** Returns service health status with timestamp and version.
+
+**Request:**
+```bash
+curl http://localhost:8000/health
 ```
 
 **Response:**
 ```json
 {
-  "success": true,
-  "message": "Metadata generated successfully",
-  "table_format": "delta",
-  "snapshot_id": "snapshot_20260213_044224_cf52ef3e",
-  "s3_location": "s3://metadataproject/test-data/customer_data/customer_data_delta/",
-  "schema": {
-    "fields": [
-      {"name": "CustomerID", "type": "string"},
-      {"name": "Name", "type": "string"},
-      {"name": "Email", "type": "string"},
-      {"name": "City", "type": "string"}
-    ]
-  },
-  "row_count": 3,
-  "file_count": 3,
-  "execution_time_ms": 125430
+  "status": "healthy",
+  "timestamp": "2026-03-08T10:30:00Z",
+  "service": "LakehouseExplorer",
+  "version": "0.1.0"
 }
 ```
 
-**What it does:**
-1. Reads `customer_data.csv` from S3
-2. Creates Spark session with Delta Lake support
-3. Writes data to `customer_data_delta/` folder
-4. Generates `_delta_log/` transaction logs
-5. Creates `.metadata-snapshots/` with version info
-6. Returns snapshot ID for querying
-
-**First run:** Takes 2-3 minutes (downloads JARs: delta-spark, hadoop-aws, aws-sdk)  
-**Subsequent runs:** 30-60 seconds
+**Status Codes:**
+- `200 OK` - Service is healthy
 
 ---
 
-#### GET /query/snapshots/list
-**Purpose:** List all available snapshot versions
+### 2. Connection Test API
 
-**Why this exists:** Users need to see available versions before time travel queries.
+**Purpose:** Test AWS S3 connectivity and validate credentials.
 
-**Real Example:**
-```powershell
-$uri = 'http://localhost:8000/query/snapshots/list?storage_type=aws&bucket=metadataproject&table_path=test-data/customer_data/customer_data_delta'
-Invoke-RestMethod -Uri $uri -Method Get
-```
+#### `POST /connection/test`
 
-**Response:**
+**Description:** Tests connection to AWS S3 by attempting to list buckets.
+
+**Request Body:**
 ```json
 {
-  "success": true,
-  "message": "Found 4 snapshots",
-  "snapshot_count": 4,
-  "storage_info": {
+  "storage_type": "aws",
+  "endpoint": null,
+  "access_key": "AKIA...",
+  "secret_key": "wJal...",
+  "bucket": "metadataproject",
+  "region": "us-east-1"
+}
+```
+
+**Request:**
+```bash
+curl -X POST http://localhost:8000/connection/test \
+  -H "Content-Type: application/json" \
+  -d '{
     "storage_type": "aws",
+    "access_key": "AKIA...",
+    "secret_key": "wJal...",
     "bucket": "metadataproject",
-    "table_path": "test-data/customer_data/customer_data_delta"
-  },
-  "snapshots": [
-    {
-      "snapshot_id": "snapshot_20260213_044330_ghi789jk",
-      "delta_version": 0,
-      "timestamp": "2026-02-13T04:43:30Z",
-      "schema_columns": ["CustomerID", "Name", "Email", "City"],
-      "file_count": 3,
-      "format": "delta"
-    },
-    {
-      "snapshot_id": "snapshot_20260213_044315_def456gh",
-      "delta_version": 0,
-      "timestamp": "2026-02-13T04:43:15Z",
-      "schema_columns": ["CustomerID", "Name", "Email", "City"],
-      "file_count": 3,
-      "format": "delta"
-    },
-    {
-      "snapshot_id": "snapshot_20260213_044300_abc123de",
-      "delta_version": 0,
-      "timestamp": "2026-02-13T04:43:00Z",
-      "schema_columns": ["CustomerID", "Name", "Email", "City"],
-      "file_count": 3,
-      "format": "delta"
-    },
-    {
-      "snapshot_id": "snapshot_20260213_044224_cf52ef3e",
-      "delta_version": 0,
-      "timestamp": "2026-02-13T04:42:24Z",
-      "schema_columns": ["CustomerID", "Name", "Email", "City"],
-      "file_count": 3,
-      "format": "delta"
-    }
-  ]
-}
+    "region": "us-east-1"
+  }'
 ```
 
-**What you get:**
-- Total snapshot count
-- Each snapshot's ID, timestamp, schema, file count
-- Latest snapshot first (descending order)
-
-**Use case:** Get snapshot IDs for time travel queries
-
----
-
-### Phase 7: Query Execution
-
-#### POST /query/test-connection
-**Purpose:** Verify Trino is running and accessible
-
-**Why this exists:** Before querying, ensure Trino container is healthy.
-
-**Real Example:**
-```powershell
-Invoke-RestMethod -Uri "http://localhost:8000/query/test-connection" `
-    -Method Post `
-    -ContentType "application/json" `
-    -Body '{}'
-```
-
-**Response:**
+**Response (Success):**
 ```json
 {
   "success": true,
-  "trino_version": "435",
-  "catalogs": ["delta", "hive", "system"],
-  "message": "Successfully connected to Trino"
+  "message": "Successfully connected to AWS S3",
+  "bucket_accessible": true,
+  "region": "us-east-1"
 }
 ```
 
-**What it checks:**
-- Trino container is running
-- Version info accessible
-- Delta catalog configured
-
-**Run this first** before any Trino queries.
-
----
-
-#### POST /query/sync-table
-**Purpose:** Register Delta table in Trino for fast queries
-
-**Why this exists:** Trino can't read `_delta_log/` automatically. This endpoint:
-1. Reads Delta metadata from S3
-2. Extracts schema
-3. Registers table using `delta.system.register_table()`
-4. Enables fast SQL queries
-
-**Real Example:**
-```powershell
-$uri = 'http://localhost:8000/query/sync-table?storage_type=aws&bucket=metadataproject&table_path=test-data/customer_data/customer_data_delta&schema_name=default'
-Invoke-RestMethod -Uri $uri -Method Post
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "message": "Table synced successfully to Trino",
-  "catalog": "delta",
-  "schema": "default",
-  "table": "customer_data_delta",
-  "location": "s3://metadataproject/test-data/customer_data/customer_data_delta/",
-  "columns": ["CustomerID", "Name", "Email", "City"],
-  "trino_query_example": "SELECT * FROM delta.default.customer_data_delta LIMIT 10"
-}
-```
-
-**What it does:**
-1. Lists snapshots to get latest metadata
-2. Extracts schema from `_delta_log/`
-3. Creates schema: `CREATE SCHEMA IF NOT EXISTS delta.default`
-4. Unregisters old version: `CALL delta.system.unregister_table(...)`
-5. Registers table: `CALL delta.system.register_table(...)`
-6. Verifies with `SELECT COUNT(*)`
-
-**Run this once** after generating Delta table. Re-run if schema changes.
-
-**After sync, you can query:**
-```sql
-SELECT * FROM delta.default.customer_data_delta WHERE City = 'Mumbai'
-```
-
----
-
-#### POST /query/execute
-**Purpose:** Execute SQL queries using Trino (fast, current data only)
-
-**Why this exists:** For interactive analytics when you don't need time travel.
-
-**Prerequisites:** Table must be registered with `/query/sync-table` first.
-
-**Real Examples:**
-
-**1. Simple SELECT:**
-```powershell
-$body = '{"sql":"SELECT 1+1 AS result"}'
-Invoke-RestMethod -Uri "http://localhost:8000/query/execute" `
-    -Method Post `
-    -ContentType "application/json" `
-    -Body $body
-```
-
-**2. Query Customer Data:**
-```powershell
-$body = '{"sql":"SELECT * FROM delta.default.customer_data_delta"}'
-Invoke-RestMethod -Uri "http://localhost:8000/query/execute" `
-    -Method Post `
-    -ContentType "application/json" `
-    -Body $body
-```
-
-**3. Filter by City:**
-```powershell
-$body = '{"sql":"SELECT * FROM delta.default.customer_data_delta WHERE City = '\''Mumbai'\''"}'
-Invoke-RestMethod -Uri "http://localhost:8000/query/execute" `
-    -Method Post `
-    -ContentType "application/json" `
-    -Body $body
-```
-
-**4. Count Customers per City:**
-```powershell
-$body = '{"sql":"SELECT City, COUNT(*) as count FROM delta.default.customer_data_delta GROUP BY City"}'
-Invoke-RestMethod -Uri "http://localhost:8000/query/execute" `
-    -Method Post `
-    -ContentType "application/json" `
-    -Body $body
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "row_count": 2,
-  "columns": ["City", "count"],
-  "data": [
-    {"City": "Mumbai", "count": 2},
-    {"City": "Delhi", "count": 1}
-  ],
-  "execution_time_ms": 156,
-  "query_id": "20260213_071145_00030_22tqz"
-}
-```
-
-**Performance:** 100-500ms (vs 30-60s with Spark)
-
-**Supports:**
-- ✅ SELECT, WHERE, JOIN, GROUP BY, ORDER BY
-- ✅ Aggregations (COUNT, SUM, AVG, MIN, MAX)
-- ✅ SHOW SCHEMAS, SHOW TABLES, DESCRIBE
-- ❌ Time travel (use `/query/execute/snapshot` instead)
-- ❌ INSERT/UPDATE/DELETE (Phase 8)
-
----
-
-#### POST /query/execute/simple
-**Purpose:** Simplified query execution with automatic LIMIT
-
-**Why this exists:** Prevents accidentally returning millions of rows.
-
-**Difference from /query/execute:** Automatically adds `LIMIT 100` if not specified.
-
-**Real Example:**
-```powershell
-# This query will auto-add LIMIT 100
-$body = '{"sql":"SELECT * FROM delta.default.customer_data_delta"}'
-Invoke-RestMethod -Uri "http://localhost:8000/query/execute/simple" `
-    -Method Post `
-    -ContentType "application/json" `
-    -Body $body
-```
-
-**Actual query executed:**
-```sql
-SELECT * FROM delta.default.customer_data_delta LIMIT 100
-```
-
-**Use case:** Safe exploration of large tables
-
----
-
-#### POST /query/execute/snapshot
-**Purpose:** Query specific historical snapshot (time travel)
-
-**Why this exists:** See data as it was at any point in time. Uses Spark (auto-reads `_delta_log/`).
-
-**Real Examples:**
-
-**1. Get All Data from Latest Snapshot:**
-```powershell
-$body = @{
-    storage_type = "aws"
-    bucket = "metadataproject"
-    table_path = "test-data/customer_data/customer_data_delta"
-    snapshot_id = "snapshot_20260213_044224_cf52ef3e"
-    limit = 10
-} | ConvertTo-Json
-
-Invoke-RestMethod -Uri "http://localhost:8000/query/execute/snapshot" `
-    -Method Post `
-    -ContentType "application/json" `
-    -Body $body `
-    -TimeoutSec 180
-```
-
-**2. Filter by City:**
-```powershell
-$body = @{
-    storage_type = "aws"
-    bucket = "metadataproject"
-    table_path = "test-data/customer_data/customer_data_delta"
-    snapshot_id = "snapshot_20260213_044224_cf52ef3e"
-    sql_query = "SELECT * FROM {table} WHERE City = 'Mumbai'"
-    limit = 10
-} | ConvertTo-Json
-
-Invoke-RestMethod -Uri "http://localhost:8000/query/execute/snapshot" `
-    -Method Post `
-    -ContentType "application/json" `
-    -Body $body `
-    -TimeoutSec 180
-```
-
-**3. Count Customers per City:**
-```powershell
-$body = @{
-    storage_type = "aws"
-    bucket = "metadataproject"
-    table_path = "test-data/customer_data/customer_data_delta"
-    snapshot_id = "snapshot_20260213_044224_cf52ef3e"
-    sql_query = "SELECT City, COUNT(*) as count FROM {table} GROUP BY City"
-    limit = 100
-} | ConvertTo-Json
-
-Invoke-RestMethod -Uri "http://localhost:8000/query/execute/snapshot" `
-    -Method Post `
-    -ContentType "application/json" `
-    -Body $body `
-    -TimeoutSec 180
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "snapshot_id": "snapshot_20260213_044224_cf52ef3e",
-  "row_count": 3,
-  "columns": ["CustomerID", "Name", "Email", "City"],
-  "data": [
-    {"CustomerID": "1", "Name": "Alice", "Email": "alice@email.com", "City": "Mumbai"},
-    {"CustomerID": "2", "Name": "Bob", "Email": "bob@email.com", "City": "Delhi"},
-    {"CustomerID": "3", "Name": "Carol", "Email": "carol@email.com", "City": "Mumbai"}
-  ],
-  "execution_time_ms": 77546,
-  "delta_version": 0
-}
-```
-
-**Important notes:**
-- Use `{table}` placeholder in `sql_query` - it's replaced with actual table reference
-- First query: 2-3 minutes (downloads JARs)
-- Subsequent queries: 30-60 seconds
-- Supports full Spark SQL syntax
-
-**Available columns for queries:**
-- CustomerID
-- Name
-- Email
-- City
-
-**Example queries:**
-```sql
--- All customers
-SELECT * FROM {table}
-
--- Mumbai customers only
-SELECT * FROM {table} WHERE City = 'Mumbai'
-
--- Names starting with 'A'
-SELECT * FROM {table} WHERE Name LIKE 'A%'
-
--- Count by city
-SELECT City, COUNT(*) as count FROM {table} GROUP BY City
-
--- Search by email domain
-SELECT * FROM {table} WHERE Email LIKE '%@email.com'
-```
-
----
-
-#### GET /query/table-info
-**Purpose:** Get table metadata from Trino catalog
-
-**Why this exists:** After registration, verify table is queryable and see schema.
-
-**Prerequisites:** Table must be synced with `/query/sync-table` first.
-
-**Real Example:**
-```powershell
-$uri = 'http://localhost:8000/query/table-info?catalog=delta&schema=default&table=customer_data_delta'
-Invoke-RestMethod -Uri $uri -Method Get
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "catalog": "delta",
-  "schema": "default",
-  "table_name": "customer_data_delta",
-  "columns": [
-    {"name": "CustomerID", "type": "varchar", "nullable": true},
-    {"name": "Name", "type": "varchar", "nullable": true},
-    {"name": "Email", "type": "varchar", "nullable": true},
-    {"name": "City", "type": "varchar", "nullable": true}
-  ]
-}
-```
-
-**What you get:**
-- Column names and Trino types
-- Nullable status
-- Confirms table is registered correctly
-
----
-
-#### POST /query/natural
-**Purpose:** Execute natural language queries (no SQL knowledge needed!)
-
-**Why this exists:** Most users don't know SQL. This endpoint converts plain English to SQL automatically using AI.
-
-**Prerequisites:** 
-- Groq API key configured in `.env` file
-- For fast queries: Table must be synced via `/query/sync-table`
-
-**Real Examples:**
-
-**1. Basic Query - Get Customers from Mumbai:**
-```powershell
-$body = @{
-    query = "Show me all customers from Mumbai"
-    storage_type = "aws"
-    bucket = "metadataproject"
-    table_path = "test-data/customer_data/customer_data_delta"
-    use_trino = $true
-} | ConvertTo-Json
-
-Invoke-RestMethod -Uri "http://localhost:8001/query/natural" `
-    -Method Post `
-    -ContentType "application/json" `
-    -Body $body
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "sql": "SELECT * FROM delta.default.customer_data_delta WHERE city = 'Mumbai' LIMIT 100",
-  "engine": "trino",
-  "row_count": 1,
-  "columns": ["customerid", "name", "email", "city"],
-  "data": [
-    {
-      "customerid": "C001",
-      "name": "Aarav Sharma",
-      "email": "aarav.sharma@gmail.com",
-      "city": "Mumbai"
-    }
-  ],
-  "execution_time_ms": 1401,
-  "llm_processing_time_ms": 756
-}
-```
-
-**2. Aggregation Query - Count Customers per City:**
-```powershell
-$body = @{
-    query = "Count how many customers are in each city"
-    storage_type = "aws"
-    bucket = "metadataproject"
-    table_path = "test-data/customer_data/customer_data_delta"
-    use_trino = $true
-} | ConvertTo-Json
-
-Invoke-RestMethod -Uri "http://localhost:8001/query/natural" `
-    -Method Post `
-    -ContentType "application/json" `
-    -Body $body
-```
-
-**3. Filter Query - Find Gmail Users:**
-```powershell
-$body = @{
-    query = "Show customers who have gmail addresses"
-    storage_type = "aws"
-    bucket = "metadataproject"
-    table_path = "test-data/customer_data/customer_data_delta"
-    use_trino = $true
-} | ConvertTo-Json
-
-Invoke-RestMethod -Uri "http://localhost:8001/query/natural" `
-    -Method Post `
-    -ContentType "application/json" `
-    -Body $body
-```
-
-**4. Time Travel Query (with Spark):**
-```powershell
-$body = @{
-    query = "Show me all customers from Mumbai"
-    storage_type = "aws"
-    bucket = "metadataproject"
-    table_path = "test-data/customer_data/customer_data_delta"
-    snapshot_id = "snapshot_20260213_044224_cf52ef3e"
-    use_trino = $false
-} | ConvertTo-Json
-
-Invoke-RestMethod -Uri "http://localhost:8001/query/natural" `
-    -Method Post `
-    -ContentType "application/json" `
-    -Body $body `
-    -TimeoutSec 180
-```
-
-**Natural Language Query Examples:**
-
-| Natural Language | Generated SQL |
-|-----------------|---------------|
-| "Show me all customers" | `SELECT * FROM table LIMIT 100` |
-| "Get customers from Mumbai" | `SELECT * FROM table WHERE city = 'Mumbai'` |
-| "Count customers per city" | `SELECT city, COUNT(*) as count FROM table GROUP BY city` |
-| "Find customers with gmail" | `SELECT * FROM table WHERE email LIKE '%@gmail.com'` |
-| "Show top 5 customers" | `SELECT * FROM table LIMIT 5` |
-| "Average age by city" | `SELECT city, AVG(age) as avg_age FROM table GROUP BY city` |
-| "Customers whose name starts with A" | `SELECT * FROM table WHERE name LIKE 'A%'` |
-
-**Parameters:**
-- `query` (required): Natural language question
-- `storage_type` (required): "aws" or "minio"
-- `bucket` (required): S3 bucket name
-- `table_path` (required): Path to Delta table
-- `use_trino` (optional): `true` for fast queries (default), `false` for Spark
-- `snapshot_id` (optional): For time travel queries (requires `use_trino=false`)
-- `limit` (optional): Max rows to return (default: 100)
-
-**Response Fields:**
-- `success`: Whether query succeeded
-- `sql`: Generated SQL query (transparent!)
-- `engine`: "trino" or "spark"
-- `row_count`: Number of rows returned
-- `columns`: Column names in result
-- `data`: Array of result rows
-- `execution_time_ms`: Total query execution time
-- `llm_processing_time_ms`: Time spent on LLM conversion
-
-**Performance:**
-- LLM conversion: ~700-900ms
-- Trino execution: ~100-500ms
-- Total (Trino): ~1-2 seconds
-- Total (Spark): ~30-60 seconds
-
-**Supported Query Types:**
-- ✅ SELECT queries (all columns or specific)
-- ✅ WHERE filters (equality, LIKE, ranges)
-- ✅ GROUP BY aggregations (COUNT, SUM, AVG, MIN, MAX)
-- ✅ ORDER BY sorting
-- ✅ LIMIT clauses
-- ✅ Time travel (with snapshot_id)
-- ❌ INSERT/UPDATE/DELETE (coming in Phase 9)
-- ❌ JOINs (single table only for now)
-
-**Error Handling:**
+**Response (Failure):**
 ```json
 {
   "success": false,
-  "error": "Failed to generate SQL: Invalid query format",
-  "suggestion": "Try rephrasing your query. Example: 'Show me all customers from Mumbai'"
+  "message": "Failed to connect: Invalid credentials",
+  "bucket_accessible": false
 }
 ```
 
-**Tips for Best Results:**
-- Be specific: "customers from Mumbai" > "Mumbai data"
-- Use actual column names when possible
-- Examples work great: "similar to alice@email.com"
-- Keep queries simple for best SQL generation
-- Check the generated SQL in the response!
+**Status Codes:**
+- `200 OK` - Connection successful
+- `400 Bad Request` - Invalid parameters
+- `500 Internal Server Error` - Connection failed
 
-**Setup Required:**
+---
 
-1. **Get Groq API Key:**
-   - Visit https://console.groq.com/
-   - Create free account
-   - Generate API key
+### 3. Table Format Detection API
 
-2. **Add to `.env` file:**
+**Purpose:** Automatically detect the format of a table (Delta Lake, Iceberg, Hudi, or Parquet).
+
+#### `POST /detect/format`
+
+**Description:** Analyzes S3 path structure to determine table format.
+
+**Request Body:**
+```json
+{
+  "storage_type": "aws",
+  "bucket": "metadataproject",
+  "table_path": "test-data/customer_data/customer_data_delta"
+}
+```
+
+**Request:**
+```bash
+curl -X POST http://localhost:8000/detect/format \
+  -H "Content-Type: application/json" \
+  -d '{
+    "storage_type": "aws",
+    "bucket": "metadataproject",
+    "table_path": "test-data/customer_data/customer_data_delta"
+  }'
+```
+
+**Response:**
+```json
+{
+  "format": "delta",
+  "confidence": "high",
+  "indicators": {
+    "has_delta_log": true,
+    "has_metadata_folder": false,
+    "has_parquet_files": true
+  },
+  "table_path": "test-data/customer_data/customer_data_delta",
+  "recommended_actions": [
+    "Use Delta Lake APIs for reading",
+    "ACID transactions supported",
+    "Time travel available via _delta_log"
+  ]
+}
+```
+
+**Supported Formats:**
+- `delta` - Delta Lake
+- `iceberg` - Apache Iceberg
+- `hudi` - Apache Hudi
+- `parquet` - Plain Parquet files
+
+**Status Codes:**
+- `200 OK` - Format detected
+- `404 Not Found` - Table path not found
+- `500 Internal Server Error` - Detection failed
+
+---
+
+### 4. Metadata Discovery API
+
+**Purpose:** Read and extract metadata from Delta Lake transaction logs without a metastore.
+
+#### `POST /metadata/read`
+
+**Description:** Reads `_delta_log/` to extract schema, partitions, statistics, and table properties.
+
+**Request Body:**
+```json
+{
+  "storage_type": "aws",
+  "bucket": "metadataproject",
+  "table_path": "test-data/customer_data/customer_data_delta",
+  "table_format": "delta"
+}
+```
+
+**Request:**
+```bash
+curl -X POST http://localhost:8000/metadata/read \
+  -H "Content-Type: application/json" \
+  -d '{
+    "storage_type": "aws",
+    "bucket": "metadataproject",
+    "table_path": "test-data/customer_data/customer_data_delta",
+    "table_format": "delta"
+  }'
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "table_format": "delta",
+  "schema": [
+    {
+      "name": "CustomerId",
+      "type": "string",
+      "nullable": false,
+      "metadata": {}
+    },
+    {
+      "name": "Name",
+      "type": "string",
+      "nullable": true,
+      "metadata": {}
+    },
+    {
+      "name": "Email",
+      "type": "string",
+      "nullable": true,
+      "metadata": {}
+    }
+  ],
+  "partition_columns": [],
+  "num_files": 1,
+  "size_bytes": 1547,
+  "row_count": 10,
+  "delta_version": 0,
+  "table_properties": {
+    "delta.minReaderVersion": "1",
+    "delta.minWriterVersion": "2"
+  }
+}
+```
+
+**Status Codes:**
+- `200 OK` - Metadata retrieved
+- `404 Not Found` - Table not found
+- `500 Internal Server Error` - Failed to read metadata
+
+---
+
+### 5. Snapshot Management API
+
+**Purpose:** Create, list, and manage custom snapshots of Delta Lake tables.
+
+#### `POST /metadata/generate-snapshot`
+
+**Description:** Creates a new snapshot with rich metadata and stores it in `.metadata-snapshots/`.
+
+**Request Body:**
+```json
+{
+  "storage_type": "aws",
+  "bucket": "metadataproject",
+  "source_path": "raw/customer_data.csv",
+  "source_format": "csv",
+  "target_path": "tables/customer_data_delta",
+  "snapshot_name": "Initial Customer Data Load",
+  "description": "First snapshot of customer data from CSV",
+  "tags": ["production", "customer-data", "initial-load"]
+}
+```
+
+**Request:**
+```bash
+curl -X POST http://localhost:8000/metadata/generate-snapshot \
+  -H "Content-Type: application/json" \
+  -d '{
+    "storage_type": "aws",
+    "bucket": "metadataproject",
+    "source_path": "raw/customer_data.csv",
+    "source_format": "csv",
+    "target_path": "tables/customer_data_delta",
+    "snapshot_name": "Initial Customer Data Load"
+  }'
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Snapshot created successfully",
+  "snapshot_id": "snapshot_20260308_103000_abc123de",
+  "snapshot_path": "s3://metadataproject/tables/customer_data_delta/.metadata-snapshots/snapshot_20260308_103000_abc123de.json",
+  "delta_version": 0,
+  "statistics": {
+    "row_count": 10,
+    "file_count": 1,
+    "size_bytes": 1547,
+    "columns": 5
+  }
+}
+```
+
+#### `GET /metadata/list-snapshots`
+
+**Description:** List all available snapshots for a table.
+
+**Query Parameters:**
+- `storage_type` - Storage backend (aws/minio)
+- `bucket` - S3 bucket name
+- `table_path` - Path to Delta table
+
+**Request:**
+```bash
+curl "http://localhost:8000/metadata/list-snapshots?storage_type=aws&bucket=metadataproject&table_path=tables/customer_data_delta"
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "snapshots": [
+    {
+      "snapshot_id": "snapshot_20260308_103000_abc123de",
+      "name": "Initial Customer Data Load",
+      "description": "First snapshot of customer data from CSV",
+      "created_at": "2026-03-08T10:30:00Z",
+      "delta_version": 0,
+      "row_count": 10,
+      "size_bytes": 1547,
+      "tags": ["production", "customer-data", "initial-load"]
+    }
+  ],
+  "total_snapshots": 1
+}
+```
+
+**Status Codes:**
+- `200 OK` - Snapshot created/listed
+- `400 Bad Request` - Invalid parameters
+- `500 Internal Server Error` - Operation failed
+
+---
+
+### 6. Natural Language Query API
+
+**Purpose:** Execute queries using plain English powered by AI (Groq LLM).
+
+#### `POST /query/natural-language`
+
+**Description:** Converts natural language questions to SQL and executes them.
+
+**Request Body:**
+```json
+{
+  "storage_type": "aws",
+  "bucket": "metadataproject",
+  "table_path": "test-data/customer_data/customer_data_delta",
+  "question": "Show me all customers from Mumbai"
+}
+```
+
+**Request:**
+```bash
+curl -X POST http://localhost:8000/query/natural-language \
+  -H "Content-Type: application/json" \
+  -d '{
+    "storage_type": "aws",
+    "bucket": "metadataproject",
+    "table_path": "test-data/customer_data/customer_data_delta",
+    "question": "Show me all customers from Mumbai"
+  }'
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "question": "Show me all customers from Mumbai",
+  "generated_sql": "SELECT * FROM query_table WHERE City = 'Mumbai' LIMIT 100",
+  "data": [
+    {
+      "CustomerId": "C001",
+      "Name": "Raj Patel",
+      "Email": "raj@example.com",
+      "City": "Mumbai",
+      "Age": 28
+    }
+  ],
+  "columns": ["CustomerId", "Name", "Email", "City", "Age"],
+  "row_count": 1,
+  "execution_time_ms": 1847,
+  "explanation": "Selecting all customers where city is Mumbai"
+}
+```
+
+**Supported Query Types:**
+
+**1. Read Queries (SELECT):**
+- "Show me all customers"
+- "Count customers by city"
+- "Find customers with gmail email addresses"
+- "Get top 10 customers by age"
+
+**2. Update Queries:**
+- "Set name to 'John Doe' where customer ID is C001"
+- "Update email to test@example.com for all customers in Mumbai"
+
+**3. Insert Queries:**
+- "Add a new customer with ID C100, name Sarah, email sarah@test.com"
+- "Insert customer with ID C200, name Mike, city Delhi"
+
+**4. Delete Queries:**
+- "Delete customer with ID C999"
+- "Remove all customers from Delhi"
+
+**Status Codes:**
+- `200 OK` - Query executed
+- `400 Bad Request` - Invalid question or failed to generate SQL
+- `500 Internal Server Error` - Query execution failed
+
+---
+
+## 🖥️ Frontend Pages
+
+### 1. **Explorer Page** (`/explorer`)
+
+**Purpose:** Browse S3 buckets and discover tables.
+
+**Features:**
+- List all prefixes/folders in S3 bucket
+- Navigate through directory structure
+- Detect table format automatically
+- View table preview
+
+**How to Use:**
+1. Go to http://localhost:3001/explorer
+2. Enter bucket name and optional prefix
+3. Click "List Objects"
+4. Navigate through folders
+5. Click on a table to see format detection
+
+---
+
+### 2. **Metadata Page** (`/metadata`)
+
+**Purpose:** View detailed metadata about Delta Lake tables.
+
+**Features:**
+- Read schema from `_delta_log/`
+- Display column names, types, and nullability
+- Show partition columns
+- Display table statistics (file count, size, rows)
+- View Delta Lake version and properties
+
+**How to Use:**
+1. Go to http://localhost:3001/metadata
+2. Select storage type (AWS/MinIO)
+3. Enter bucket name and table path
+4. Click "Read Metadata"
+5. View schema and statistics
+
+---
+
+### 3. **Natural Language Query Page** (`/natural-language`)
+
+**Purpose:** Ask questions in plain English and get SQL results.
+
+**Features:**
+- AI-powered query generation (Groq LLM)
+- Sample questions for quick start
+- Generated SQL display
+- Results table with sorting
+- Full JSON response viewer
+- Execution time tracking
+
+**How to Use:**
+1. Go to http://localhost:3001/natural-language
+2. Configure table settings (storage, bucket, path)
+3. Enter your question in plain English
+4. Click "Execute Query"
+5. View generated SQL and results
+
+**Example Questions:**
+- "Show me all rows in the table"
+- "Count customers by city"
+- "Find customers with gmail email"
+- "Update name to 'John' where ID is C001"
+
+---
+
+### 4. **SQL Query Page** (`/sql-query`)
+
+**Purpose:** Execute custom SQL queries using Trino for fast analytics.
+
+**Features:**
+- Custom SQL editor
+- Query history
+- Result table with export
+- Query performance metrics
+- Syntax highlighting
+
+**How to Use:**
+1. Go to http://localhost:3001/sql-query
+2. Enter Trino connection details
+3. Write custom SQL query
+4. Click "Execute"
+5. View results and performance metrics
+
+---
+
+### 5. **Snapshots Page** (`/snapshots`)
+
+**Purpose:** Create and manage custom snapshots of Delta tables.
+
+**Features:**
+- Create snapshots with metadata
+- List all available snapshots
+- View snapshot details
+- Compare snapshots
+- Time travel to historical versions
+
+**How to Use:**
+1. Go to http://localhost:3001/snapshots
+2. Configure source and target paths
+3. Enter snapshot name and description
+4. Add optional tags
+5. Click "Create Snapshot"
+6. View snapshot list and details
+
+---
+
+### 6. **Settings Page** (`/settings`)
+
+**Purpose:** Configure AWS credentials and storage backends.
+
+**Features:**
+- Test S3 connection
+- Save credentials
+- Configure storage type (AWS/MinIO)
+- Validate bucket access
+
+**How to Use:**
+1. Go to http://localhost:3001/settings
+2. Enter AWS credentials
+3. Click "Test Connection"
+4. Save configuration if successful
+
+---
+
+## 🎓 Usage Examples
+
+### Example 1: Discover and Query a New Table
+
+**Step 1: Test Connection**
+```bash
+curl -X POST http://localhost:8000/connection/test \
+  -H "Content-Type: application/json" \
+  -d '{
+    "storage_type": "aws",
+    "bucket": "metadataproject",
+    "region": "us-east-1"
+  }'
+```
+
+**Step 2: Detect Table Format**
+```bash
+curl -X POST http://localhost:8000/detect/format \
+  -H "Content-Type: application/json" \
+  -d '{
+    "storage_type": "aws",
+    "bucket": "metadataproject",
+    "table_path": "test-data/customer_data/customer_data_delta"
+  }'
+```
+
+**Step 3: Read Metadata**
+```bash
+curl -X POST http://localhost:8000/metadata/read \
+  -H "Content-Type: application/json" \
+  -d '{
+    "storage_type": "aws",
+    "bucket": "metadataproject",
+    "table_path": "test-data/customer_data/customer_data_delta",
+    "table_format": "delta"
+  }'
+```
+
+**Step 4: Query with Natural Language**
+```bash
+curl -X POST http://localhost:8000/query/natural-language \
+  -H "Content-Type: application/json" \
+  -d '{
+    "storage_type": "aws",
+    "bucket": "metadataproject",
+    "table_path": "test-data/customer_data/customer_data_delta",
+    "question": "Show me the first 5 customers"
+  }'
+```
+
+---
+
+### Example 2: Create a Snapshot
+
+```bash
+curl -X POST http://localhost:8000/metadata/generate-snapshot \
+  -H "Content-Type: application/json" \
+  -d '{
+    "storage_type": "aws",
+    "bucket": "metadataproject",
+    "source_path": "raw/customer_data.csv",
+    "source_format": "csv",
+    "target_path": "tables/customer_data_delta",
+    "snapshot_name": "Q1 2026 Customer Data",
+    "description": "Customer data snapshot for Q1 reporting",
+    "tags": ["production", "quarterly"]
+  }'
+```
+
+---
+
+### Example 3: Update Data with Natural Language
+
+```bash
+curl -X POST http://localhost:8000/query/natural-language \
+  -H "Content-Type: application/json" \
+  -d '{
+    "storage_type": "aws",
+    "bucket": "metadataproject",
+    "table_path": "test-data/customer_data/customer_data_delta",
+    "question": "Update email to newemail@test.com where customer ID is C001"
+  }'
+```
+
+---
+
+## 📂 Project Structure
+
+```
+META/
+├── app/                           # Backend application
+│   ├── api/                       # API endpoints
+│   │   ├── connection.py          # Connection testing
+│   │   ├── detect.py              # Format detection
+│   │   ├── health.py              # Health checks
+│   │   ├── metadata.py            # Metadata reading
+│   │   ├── metadata_gen.py        # Snapshot generation
+│   │   └── query.py               # Natural language + SQL queries
+│   ├── core/                      # Core configuration
+│   │   ├── logger.py              # Structured logging
+│   │   └── settings.py            # Environment settings
+│   ├── engines/                   # Query & metadata engines
+│   │   ├── nl_query_engine.py     # Groq LLM integration
+│   │   ├── spark_metadata_engine.py  # Delta log reader
+│   │   ├── spark_query_engine.py  # Spark SQL executor
+│   │   └── trino_query_engine.py  # Trino query executor
+│   └── main.py                    # FastAPI application
+├── frontend/                      # Next.js frontend
+│   ├── src/
+│   │   ├── app/                   # Pages
+│   │   │   ├── explorer/          # S3 browser
+│   │   │   ├── metadata/          # Metadata viewer
+│   │   │   ├── natural-language/  # NL query interface
+│   │   │   ├── sql-query/         # SQL editor
+│   │   │   ├── snapshots/         # Snapshot manager
+│   │   │   └── settings/          # Configuration
+│   │   ├── components/            # Reusable UI components
+│   │   └── lib/                   # API clients and utilities
+│   ├── package.json
+│   └── next.config.js
+├── docker-compose.yml             # Service orchestration
+├── Dockerfile                     # Backend container
+├── requirements.txt               # Python dependencies
+├── .env                          # Environment variables
+└── README.md                     # This file
+```
+
+---
+
+## 🐛 Troubleshooting
+
+### Common Issues
+
+#### 1. **Java Not Found**
+
+**Error:**
+```
+Error: JAVA_HOME is not set
+```
+
+**Solution:**
+```powershell
+# Install Java 17
+# Download from: https://docs.aws.amazon.com/corretto/latest/corretto-17-ug/downloads-list.html
+
+# Set JAVA_HOME
+setx JAVA_HOME "C:\Program Files\Amazon Corretto\jdk17.0.x"
+
+# Verify
+java -version
+```
+
+#### 2. **Docker Not Running**
+
+**Error:**
+```
+Cannot connect to the Docker daemon
+```
+
+**Solution:**
+- Start Docker Desktop
+- Wait for Docker to fully start
+- Run `docker ps` to verify
+
+#### 3. **Spark Connection Failed**
+
+**Error:**
+```
+Failed to connect to Spark master
+```
+
+**Solution:**
+```powershell
+# Check Spark is running
+docker-compose ps
+
+# Restart Spark services
+docker-compose restart spark-master spark-worker
+
+# Check Spark UI
+# Open: http://localhost:8081
+```
+
+#### 4. **Missing GROQ_API_KEY**
+
+**Error:**
+```
+GROQ_API_KEY not set
+```
+
+**Solution:**
+1. Get API key from https://console.groq.com/keys
+2. Add to `.env` file:
    ```env
    GROQ_API_KEY=gsk_your_api_key_here
    ```
-
-3. **Restart FastAPI server:**
+3. Restart backend:
    ```powershell
    docker-compose restart fastapi
    ```
 
-**Why Groq?**
-- ✅ Fast inference (800ms avg for 70B model)
-- ✅ Free tier available
-- ✅ No complex prompt engineering needed
-- ✅ llama-3.3-70b-versatile model is accurate for SQL
+#### 5. **AWS Credentials Invalid**
 
----
-
-#### POST /query/write
-**Purpose:** Execute write operations (INSERT/UPDATE/DELETE)
-
-**Status:** ❌ **NOT IMPLEMENTED** (Coming in Phase 9)
-
-**Current Response:**
-```json
-{
-  "detail": "Write queries will be implemented in Phase 9"
-}
+**Error:**
 ```
-
-**Planned for Phase 9:**
-- INSERT new rows
-- UPDATE existing data
-- DELETE rows
-- MERGE (upsert) operations
-- Automatic snapshot generation after writes
-
----
-
-## 🔄 Complete Workflow Example
-
-### Scenario: Query Customer Data
-
-**Step 1: Generate Delta Table**
-```powershell
-# Convert CSV to Delta Lake format
-$body = @{
-    storage_type = "aws"
-    bucket = "metadataproject"
-    path = "test-data/customer_data/customer_data.csv"
-    table_format = "delta"
-    force_refresh = $false
-} | ConvertTo-Json
-
-$result = Invoke-RestMethod -Uri "http://localhost:8000/metadata/generate" `
-    -Method Post -ContentType "application/json" -Body $body
-
-Write-Host "Table generated: $($result.s3_location)"
-Write-Host "Snapshot ID: $($result.snapshot_id)"
+Failed to connect: Invalid credentials
 ```
-
-**Step 2: List Available Snapshots**
-```powershell
-# See all versions
-$uri = 'http://localhost:8000/query/snapshots/list?storage_type=aws&bucket=metadataproject&table_path=test-data/customer_data/customer_data_delta'
-$snapshots = Invoke-RestMethod -Uri $uri -Method Get
-
-Write-Host "Found $($snapshots.snapshot_count) snapshots"
-$latest_snapshot = $snapshots.snapshots[0].snapshot_id
-Write-Host "Latest: $latest_snapshot"
-```
-
-**Step 3: Option A - Slow Snapshot Query (Time Travel)**
-```powershell
-# Query using Spark (supports any version)
-$body = @{
-    storage_type = "aws"
-    bucket = "metadataproject"
-    table_path = "test-data/customer_data/customer_data_delta"
-    snapshot_id = $latest_snapshot
-    sql_query = "SELECT City, COUNT(*) as count FROM {table} GROUP BY City"
-    limit = 100
-} | ConvertTo-Json
-
-$result = Invoke-RestMethod -Uri "http://localhost:8000/query/execute/snapshot" `
-    -Method Post -ContentType "application/json" -Body $body -TimeoutSec 180
-
-Write-Host "Query time: $($result.execution_time_ms)ms"
-$result.data | Format-Table
-```
-
-**Execution time:** ~30-60 seconds
-
-**Step 3: Option B - Fast Trino Query (Current Data Only)**
-```powershell
-# First, register table in Trino (one-time)
-$uri = 'http://localhost:8000/query/sync-table?storage_type=aws&bucket=metadataproject&table_path=test-data/customer_data/customer_data_delta&schema_name=default'
-Invoke-RestMethod -Uri $uri -Method Post
-
-# Now query with Trino (fast!)
-$body = '{"sql":"SELECT City, COUNT(*) as count FROM delta.default.customer_data_delta GROUP BY City"}'
-$result = Invoke-RestMethod -Uri "http://localhost:8000/query/execute" `
-    -Method Post -ContentType "application/json" -Body $body
-
-Write-Host "Query time: $($result.execution_time_ms)ms"
-$result.data | Format-Table
-```
-
-**Execution time:** ~100-500 milliseconds
-
----
-
-## 🔍 Understanding the Two Query Systems
-
-### When to Use Snapshot Queries (Spark)
-
-**Use cases:**
-- ✅ Need to query old versions (time travel)
-- ✅ Auditing: "What did the data look like last week?"
-- ✅ Debugging: "When did this bad data appear?"
-- ✅ Compliance: "Show me data as of December 31st"
-
-**Characteristics:**
-- Slow: 30-60 seconds per query
-- No setup required (auto-discovers `_delta_log/`)
-- Supports any snapshot version
-- Full Spark SQL support
-
-**Example:**
-```powershell
-# Query data from 2 hours ago
-$body = @{
-    storage_type = "aws"
-    bucket = "metadataproject"
-    table_path = "test-data/customer_data/customer_data_delta"
-    snapshot_id = "snapshot_20260213_044224_cf52ef3e"  # Old version
-    sql_query = "SELECT * FROM {table} WHERE City = 'Mumbai'"
-    limit = 10
-} | ConvertTo-Json
-```
-
----
-
-### When to Use Trino Queries
-
-**Use cases:**
-- ✅ Interactive dashboards
-- ✅ BI tools (Tableau, Power BI)
-- ✅ Ad-hoc exploration
-- ✅ Real-time analytics
-- ✅ API responses (user-facing applications)
-
-**Characteristics:**
-- Fast: 100-500 milliseconds
-- Requires one-time setup (`/query/sync-table`)
-- Current data only (no time travel)
-- Standard SQL support
-
-**Example:**
-```powershell
-# First sync (once)
-$uri = 'http://localhost:8000/query/sync-table?storage_type=aws&bucket=metadataproject&table_path=test-data/customer_data/customer_data_delta&schema_name=default'
-Invoke-RestMethod -Uri $uri -Method Post
-
-# Then query (many times, fast)
-$body = '{"sql":"SELECT * FROM delta.default.customer_data_delta WHERE City = '\''Mumbai'\''"}'
-Invoke-RestMethod -Uri "http://localhost:8000/query/execute" `
-    -Method Post -ContentType "application/json" -Body $body
-```
-
----
-
-## 🔬 How Trino Registration Works
-
-### The Problem
-
-Trino doesn't scan S3 looking for tables. It needs a **catalog** (think: table of contents).
-
-**Without registration:**
-```sql
-SELECT * FROM delta.default.customer_data_delta
-→ Error: Schema 'default' does not exist
-```
-
-**Why?** Trino's catalog is empty:
-```
-delta.information_schema [empty]
-```
-
----
-
-### The Solution: register_table()
-
-Trino provides `delta.system.register_table()` procedure:
-
-**What it does:**
-1. Reads Delta `_delta_log/` from S3
-2. Extracts schema (columns and types)
-3. Notes current data file locations
-4. Creates catalog entry: `delta.default.customer_data_delta` → `s3://...`
-
-**After registration:**
-```
-delta.default.customer_data_delta → s3://metadataproject/.../customer_data_delta/
-```
-
-**Now queries work:**
-```sql
-SELECT * FROM delta.default.customer_data_delta
-→ Returns data in 100ms!
-```
-
----
-
-### Our /query/sync-table Endpoint
-
-Automates the registration process:
-
-```
-1. List snapshots → Get latest
-2. Read _delta_log/ → Extract schema
-3. Map Delta types → Trino types
-   string → VARCHAR
-   integer → INTEGER
-   long → BIGINT
-4. CREATE SCHEMA IF NOT EXISTS delta.default
-5. CALL delta.system.unregister_table() (remove old)
-6. CALL delta.system.register_table() (register new)
-7. SELECT COUNT(*) → Verify it works
-```
-
-**You call once:**
-```powershell
-POST /query/sync-table
-```
-
-**Then query forever:**
-```sql
-SELECT * FROM delta.default.customer_data_delta WHERE...
-```
-
----
-
-## 📊 Performance Comparison
-
-### Real Performance Data (Our Table)
-
-| Operation | Trino | Spark | Winner |
-|-----------|-------|-------|--------|
-| **Simple SELECT** | 156ms | 77,546ms (77s) | Trino (494x faster) |
-| **GROUP BY** | 189ms | 82,123ms (82s) | Trino (434x faster) |
-| **WHERE filter** | 143ms | 75,234ms (75s) | Trino (526x faster) |
-| **Time travel** | ❌ Not supported | 77,546ms (77s) | Spark (only option) |
-
-### Why Such a Big Difference?
-
-**Spark (Snapshot Queries):**
-1. Start JVM (10s)
-2. Download JARs: delta-spark, hadoop-aws, aws-sdk (30s first time)
-3. Create Spark session (5s)
-4. List S3 files (2s)
-5. Read `_delta_log/` (3s)
-6. Plan query (2s)
-7. Execute query (5s)
-8. Collect results (1s)
-9. Shutdown (1s)
-
-**Total:** ~59 seconds
-
-**Trino (Fast Queries):**
-1. Parse SQL (10ms)
-2. Look up catalog (5ms)
-3. Plan query (20ms)
-4. Execute on workers (100ms)
-5. Return results (21ms)
-
-**Total:** ~156ms
-
----
-
-## 🛠️ Docker Services
-
-### What's Running?
-
-```powershell
-docker ps
-```
-
-**Expected containers:**
-
-| Container | Image | Port | Purpose |
-|-----------|-------|------|---------|
-| `lakehouse-api` | Custom (FastAPI) | 8000 | REST API |
-| `spark-master` | apache/spark:3.5.1 | 7077, 8081 | Spark master |
-| `spark-worker` | apache/spark:3.5.1 | - | Spark worker |
-| `lakehouse-trino` | trinodb/trino:435 | 8082 | Trino query engine |
-
-### Service Management
-
-**Start all services:**
-```powershell
-docker-compose up -d
-```
-
-**Stop all services:**
-```powershell
-docker-compose down
-```
-
-**Restart specific service:**
-```powershell
-docker-compose restart fastapi
-docker-compose restart trino
-```
-
-**View logs:**
-```powershell
-docker logs lakehouse-api --tail 50 --follow
-docker logs lakehouse-trino --tail 50 --follow
-```
-
-**Check health:**
-```powershell
-# API health
-Invoke-RestMethod http://localhost:8000/health
-
-# Trino health
-Invoke-RestMethod http://localhost:8082/v1/info
-```
-
----
-
-## 🌐 Access Points
-
-| Service | URL | Purpose |
-|---------|-----|---------|
-| **FastAPI Swagger** | http://localhost:8000/docs | Interactive API docs |
-| **FastAPI ReDoc** | http://localhost:8000/redoc | Alternative API docs |
-| **Trino Web UI** | http://localhost:8082 | Query monitoring |
-| **Spark Master UI** | http://localhost:8081 | Spark cluster status |
-
----
-
-## 🧪 Testing Checklist
-
-### Phase 6: Metadata Generation
-
-- [ ] Generate Delta table from CSV
-- [ ] List snapshots (should show 4)
-- [ ] Verify files in S3 (3 parquet files)
-- [ ] Check `_delta_log/` exists
-- [ ] Check `.metadata-snapshots/` exists
-
-**Commands:**
-```powershell
-# Generate
-POST /metadata/generate
-
-# List
-GET /query/snapshots/list
-```
-
----
-
-### Phase 7: Query Execution
-
-- [ ] Test Trino connection
-- [ ] Sync table to Trino
-- [ ] Execute simple Trino query
-- [ ] Execute COUNT/GROUP BY query
-- [ ] Execute snapshot query (time travel)
-- [ ] Verify Trino UI shows queries
-
-**Commands:**
-```powershell
-# 1. Test connection
-POST /query/test-connection
-
-# 2. Sync table
-POST /query/sync-table
-
-# 3. Trino query
-POST /query/execute
-{"sql":"SELECT * FROM delta.default.customer_data_delta"}
-
-# 4. Snapshot query
-POST /query/execute/snapshot
-{snapshot_id, sql_query, ...}
-```
-
----
-
-### Phase 8: Natural Language Queries
-
-- [ ] Configure Groq API key in `.env`
-- [ ] Test basic natural language query
-- [ ] Test aggregation query ("count customers per city")
-- [ ] Test filter query ("customers from Mumbai")
-- [ ] Test time travel with natural language
-- [ ] Verify generated SQL is correct
-- [ ] Check response time (< 2 seconds for Trino)
-
-**Commands:**
-```powershell
-# 1. Set up API key (one-time)
-Add to .env: GROQ_API_KEY=gsk_your_key_here
-Restart: docker-compose restart fastapi
-
-# 2. Basic natural language query
-POST /query/natural
-{
-  "query": "Show me all customers from Mumbai",
-  "storage_type": "aws",
-  "bucket": "metadataproject",
-  "table_path": "test-data/customer_data/customer_data_delta",
-  "use_trino": true
-}
-
-# 3. Aggregation query
-POST /query/natural
-{
-  "query": "Count how many customers are in each city",
-  ...
-}
-
-# 4. Time travel with natural language
-POST /query/natural
-{
-  "query": "Show me all customers",
-  "snapshot_id": "snapshot_20260213_044224_cf52ef3e",
-  "use_trino": false,
-  ...
-}
-```
-
----
-
-## 🐞 Troubleshooting
-
-### Error: "Schema 'default' does not exist"
-
-**Cause:** Table not registered in Trino
 
 **Solution:**
-```powershell
-$uri = 'http://localhost:8000/query/sync-table?storage_type=aws&bucket=metadataproject&table_path=test-data/customer_data/customer_data_delta&schema_name=default'
-Invoke-RestMethod -Uri $uri -Method Post
-```
-
----
-
-### Error: "Using CREATE TABLE with existing table content"
-
-**Cause:** Trino can't CREATE TABLE on existing Delta data
-
-**Solution:** Already fixed! We use `register_table()` instead. Just call `/query/sync-table`.
-
----
-
-### Error: Snapshot query takes 3+ minutes
-
-**Cause:** First query downloads JARs (delta-spark, hadoop-aws, aws-sdk)
-
-**Solution:** Wait once. Subsequent queries will be ~30-60 seconds.
-
----
-
-### Error: Docker container not starting
-
-**Check logs:**
-```powershell
-docker logs lakehouse-api
-docker logs lakehouse-trino
-```
-
-**Common issues:**
-- Port already in use (change in docker-compose.yml)
-- Out of memory (allocate more to Docker Desktop)
-- AWS credentials not set (check .env file)
-
----
-
-### Error: API returns 500 Internal Server Error
-
-**Check logs:**
-```powershell
-docker logs lakehouse-api --tail 50
-```
-
-**Common causes:**
-- Invalid AWS credentials
-- S3 bucket doesn't exist
-- Network timeout (increase `-TimeoutSec`)
-
----
-
-### Error: "GROQ_API_KEY not set"
-
-**Cause:** Groq API key not configured or not loaded properly
-
-**Solution:**
-```powershell
-# 1. Check .env file has the key
-Get-Content .env | Select-String "GROQ_API_KEY"
-
-# 2. If missing, add it:
-"GROQ_API_KEY=gsk_your_api_key_here" | Add-Content .env
-
-# 3. Restart server to reload environment
-docker-compose restart fastapi
-
-# OR if running locally:
-# Stop server (Ctrl+C)
-# Start again: C:\Users\ashis\Desktop\META\.venv\Scripts\python.exe -m uvicorn app.main:app --host 0.0.0.0 --port 8001
-```
-
-**Get API key:**
-- Visit https://console.groq.com/
-- Sign up (free)
-- Generate API key
-- Copy to `.env` file
-
----
-
-### Error: Natural language query returns wrong SQL
-
-**Cause:** LLM misunderstood the query or doesn't know column names
-
-**Solutions:**
-1. **Be more specific:**
-   - ❌ "Show me Mumbai"
-   - ✅ "Show me all customers from Mumbai"
-
-2. **Use actual column names:**
-   - ❌ "Filter by location"
-   - ✅ "Filter by city"
-
-3. **Check generated SQL in response:**
-   ```json
-   {
-     "sql": "SELECT * FROM ...",  ← Review this!
-     "data": [...]
-   }
+1. Verify credentials in `.env`
+2. Test with AWS CLI:
+   ```powershell
+   aws s3 ls s3://your-bucket-name --profile your-profile
    ```
+3. Update `.env` with correct credentials
+4. Restart backend
 
-4. **Rephrase and try again:**
-   - "Count customers" → "Count how many customers are in each city"
+#### 6. **Port Already in Use**
 
----
-
-### Error: Port 8000 already in use
-
-**Cause:** Another process (often Docker/WSL) is using port 8000
+**Error:**
+```
+Port 8000 is already in use
+```
 
 **Solution:**
 ```powershell
-# Find what's using port 8000
-Get-NetTCPConnection -LocalPort 8000 | ForEach-Object {
-    $proc = Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue
-    Write-Host "Port 8000 used by: $($proc.ProcessName) (PID: $($proc.Id))"
-}
+# Find process using port
+netstat -ano | findstr :8000
 
-# Option 1: Kill the process
-Stop-Process -Id <PID> -Force
+# Kill process (replace PID with actual process ID)
+taskkill /PID <PID> /F
 
-# Option 2: Use different port (recommended)
-# Start server on port 8001 instead:
-C:\Users\ashis\Desktop\META\.venv\Scripts\python.exe -m uvicorn app.main:app --host 0.0.0.0 --port 8001
-
-# Then access: http://localhost:8001/docs
+# Or change port in .env
+API_PORT=8001
 ```
 
 ---
 
-### Error: Trino connection refused
+## 🔧 Development Commands
 
-**Cause:** Trino container not running or not ready
+### Backend Development
 
-**Solution:**
 ```powershell
-# 1. Check if Docker Desktop is running
-# 2. Check if Trino container is up
-docker ps | Select-String "trino"
+# Activate virtual environment
+.\.venv\Scripts\Activate.ps1
 
-# 3. If not running, start it:
-docker-compose up -d trino
+# Run backend locally (hot reload)
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
-# 4. Wait 10 seconds for Trino to initialize
-Start-Sleep -Seconds 10
+# Run tests
+pytest
 
-# 5. Verify Trino is accessible:
-Invoke-RestMethod http://localhost:8080/v1/info
+# Check code formatting
+black app/
+flake8 app/
+
+# Type checking
+mypy app/
 ```
 
-**Note:** Trino listens on port **8080** (not 8082). The Trino UI is on 8082.
+### Frontend Development
 
----
-
-## 📈 What's Next: Phase 9
-
-**Write Operations:**
-- INSERT new rows into Delta tables
-- UPDATE existing data
-- DELETE rows
-- MERGE (upsert) operations
-- Automatic snapshot generation after writes
-- Transaction rollback support
-
-**Example (coming soon):**
 ```powershell
-$body = @{
-    sql = "INSERT INTO delta.``s3a://metadataproject/test-data/customer_data/customer_data_delta`` (CustomerID, Name, Email, City) VALUES ('4', 'David', 'david@email.com', 'Bangalore')"
-    storage_type = "aws"
-    bucket = "metadataproject"
-    target_path = "test-data/customer_data/customer_data_delta"
-    auto_snapshot = $true
-} | ConvertTo-Json
+cd frontend
 
-Invoke-RestMethod -Uri "http://localhost:8000/query/write" `
-    -Method Post -ContentType "application/json" -Body $body
+# Install dependencies
+npm install
+
+# Run development server (hot reload)
+npm run dev
+
+# Build for production
+npm run build
+
+# Start production server
+npm start
+
+# Lint code
+npm run lint
+```
+
+### Docker Commands
+
+```powershell
+# Build services
+docker-compose build
+
+# Start all services
+docker-compose up -d
+
+# Stop all services
+docker-compose down
+
+# View logs
+docker-compose logs -f fastapi
+
+# Restart specific service
+docker-compose restart fastapi
+
+# Remove everything (including volumes)
+docker-compose down -v
+
+# Rebuild and restart
+docker-compose up -d --build
 ```
 
 ---
 
-## 📚 Key Learnings
+## 📝 Environment Variables Reference
 
-### 1. Metastores Are Optional
-Traditional wisdom: "You need Hive Metastore or AWS Glue"
+```env
+# Application
+APP_NAME=LakehouseExplorer
+APP_VERSION=0.1.0
+ENVIRONMENT=development
+LOG_LEVEL=INFO
 
-**Reality:** Delta Lake's `_delta_log/` IS the metastore. Just read it directly!
+# AWS Configuration
+AWS_ACCESS_KEY_ID=your_access_key
+AWS_SECRET_ACCESS_KEY=your_secret_key
+AWS_REGION=us-east-1
+AWS_S3_BUCKET=your_bucket_name
 
-### 2. One Size Doesn't Fit All
-**Spark:** Great for writes and time travel  
-**Trino:** Great for fast reads  
+# Groq API (Natural Language)
+GROQ_API_KEY=gsk_your_groq_api_key
 
-**Use both!** Each for its strengths.
+# Spark Configuration
+SPARK_MASTER=spark://localhost:7077
+SPARK_APP_NAME=LakehouseExplorer
+SPARK_DRIVER_MEMORY=2g
+SPARK_EXECUTOR_MEMORY=2g
 
-### 3. Registration vs Discovery
-**Spark:** Auto-discovers (`_delta_log/` reading is built-in)  
-**Trino:** Needs registration (catalog-based architecture)
+# API Server
+API_HOST=0.0.0.0
+API_PORT=8000
+API_RELOAD=true
+ALLOWED_ORIGINS=http://localhost:3000,http://localhost:3001
 
-**Solution:** Automate registration with `/query/sync-table`
+# Security
+SECRET_KEY=your_secret_key_here
 
-### 4. Custom Snapshots Fill a Gap
-**Delta's `_delta_log/`:** Technical, hard to understand  
-**Our `.metadata-snapshots/`:** Business-friendly, easy versions
-
-**Both matter:** Delta for engine compatibility, snapshots for humans
-
-### 5. AI Makes Data Accessible (Phase 8)
-**Traditional approach:** "Learn SQL or hire a data analyst"  
-**Our approach:** "Just ask in plain English"
-
-**Why it matters:**
-- Business users can self-serve data
-- Reduces dependency on technical teams
-- Democratizes data access
-- Generated SQL is transparent (users can learn)
-
-**Key insight:** LLM needs table schema context. Solution: Auto-extract from `_delta_log/` and include in prompt.
-
-### 6. Fast LLM Inference is Critical
-**Why Groq?** 
-- 800ms for 70B parameter model (vs 3-5 seconds with OpenAI)
-- Free tier available
-- Simple API (no complex prompt chains)
-
-**Impact:** Natural language queries feel instant (~1-2 seconds total including SQL execution)
-
----
-
-## 🎓 Project Structure
-
-```
-META/
-├── app/
-│   ├── api/                              # API endpoints
-│   │   ├── health.py                     # Health checks
-│   │   ├── connection.py                 # AWS validation (Phase 3)
-│   │   ├── detect.py                     # Format detection (Phase 4)
-│   │   ├── metadata.py                   # Metadata reading (Phase 5)
-│   │   ├── metadata_gen.py               # Delta generation (Phase 6)
-│   │   └── query.py                      # Query execution (Phase 7)
-│   ├── core/                             # Core utilities
-│   │   ├── settings.py                   # Environment config
-│   │   ├── logger.py                     # JSON logging
-│   │   └── aws_client.py                 # S3 client
-│   ├── engines/                          # Query engines
-│   │   ├── trino_query_engine.py         # Trino interface
-│   │   ├── spark_query_engine.py         # Spark interface
-│   │   └── nl_query_engine.py            # Natural language to SQL (Phase 8)
-│   ├── metadata/                         # Format readers
-│   │   ├── delta_reader.py               # Delta _delta_log/ parser
-│   │   └── format_detector.py            # Auto-detect formats
-│   ├── storage/                          # Snapshot management
-│   │   ├── snapshot_manager.py           # Generate/list snapshots
-│   │   └── delta_converter.py            # CSV → Delta conversion
-│   └── main.py                           # FastAPI app
-├── config/
-│   └── trino/
-│       └── catalog/
-│           ├── delta.properties          # Delta Lake connector
-│           └── hive.properties           # Hive connector
-├── docker-compose.yml                    # Container orchestration
-├── Dockerfile                            # FastAPI container
-├── requirements.txt                      # Python dependencies
-├── .env                                  # Environment variables (DO NOT COMMIT)
-├── .env.example                          # Environment template
-├── PHASE7_API_INPUTS.md                  # API usage guide
-└── README.md                             # This file
-```
-
----
-
-## 🤝 Contributing
-
-This is a learning project built phase-by-phase. Each phase is committed separately to show progression.
-
-**Commit convention:**
-```
-feat: Phase X - Description
-fix: Bug description
-docs: Documentation update
+# Feature Flags
+ENABLE_MCP=true
+ENABLE_LLM=true
+ENABLE_METRICS=true
 ```
 
 ---
 
 ## 📄 License
 
-MIT License - Educational purposes
+This project is licensed under the MIT License.
 
 ---
 
-## 👨‍💻 Author
+## 🙏 Acknowledgments
 
-Built as a hands-on learning project for understanding:
-- Lakehouse architecture (Delta Lake, Iceberg, Hudi)
-- Distributed query engines (Trino, Spark)
-- Data platform engineering
-- REST API design
-- Docker orchestration
-
-**GitHub:** https://github.com/AshishDeshmukh674/META_DATA
+- **Apache Spark** - Distributed computing framework
+- **Delta Lake** - ACID transactions for data lakes
+- **FastAPI** - Modern Python web framework
+- **Next.js** - React framework
+- **Groq** - Fast AI inference platform
+- **Trino** - Distributed SQL query engine
 
 ---
 
-## 📌 Quick Command Reference
+## 📧 Support
 
-### Setup
-```powershell
-# Clone & setup
-git clone https://github.com/AshishDeshmukh674/META_DATA.git
-cd META
-python -m venv .venv
-.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-
-# Configure
-Copy-Item .env.example .env
-# Edit .env with AWS credentials
-
-# Start services
-docker-compose up -d
-Start-Sleep -Seconds 30
-```
-
-### Generate Delta Table
-```powershell
-$body = @{
-    storage_type = "aws"
-    bucket = "metadataproject"
-    path = "test-data/customer_data/customer_data.csv"
-    table_format = "delta"
-    force_refresh = $false
-} | ConvertTo-Json
-
-Invoke-RestMethod -Uri "http://localhost:8000/metadata/generate" `
-    -Method Post -ContentType "application/json" -Body $body
-```
-
-### Query with Trino (Fast)
-```powershell
-# Step 1: Sync table (once)
-$uri = 'http://localhost:8000/query/sync-table?storage_type=aws&bucket=metadataproject&table_path=test-data/customer_data/customer_data_delta&schema_name=default'
-Invoke-RestMethod -Uri $uri -Method Post
-
-# Step 2: Query (many times)
-$body = '{"sql":"SELECT * FROM delta.default.customer_data_delta WHERE City = '\''Mumbai'\''"}'
-Invoke-RestMethod -Uri "http://localhost:8000/query/execute" `
-    -Method Post -ContentType "application/json" -Body $body
-```
-
-### Query with Spark (Time Travel)
-```powershell
-# List snapshots
-$uri = 'http://localhost:8000/query/snapshots/list?storage_type=aws&bucket=metadataproject&table_path=test-data/customer_data/customer_data_delta'
-$snapshots = Invoke-RestMethod -Uri $uri -Method Get
-$snapshot_id = $snapshots.snapshots[0].snapshot_id
-
-# Query snapshot
-$body = @{
-    storage_type = "aws"
-    bucket = "metadataproject"
-    table_path = "test-data/customer_data/customer_data_delta"
-    snapshot_id = $snapshot_id
-    sql_query = "SELECT * FROM {table} WHERE City = 'Mumbai'"
-    limit = 10
-} | ConvertTo-Json
-
-Invoke-RestMethod -Uri "http://localhost:8000/query/execute/snapshot" `
-    -Method Post -ContentType "application/json" -Body $body -TimeoutSec 180
-```
-
-### Natural Language Query (No SQL Needed!)
-```powershell
-# Step 1: Set up API key (one-time)
-"GROQ_API_KEY=gsk_your_api_key_here" | Add-Content .env
-docker-compose restart fastapi
-
-# Step 2: Sync table (one-time)
-$uri = 'http://localhost:8001/query/sync-table?storage_type=aws&bucket=metadataproject&table_path=test-data/customer_data/customer_data_delta&schema_name=default'
-Invoke-RestMethod -Uri $uri -Method Post
-
-# Step 3: Ask in plain English!
-$body = @{
-    query = "Show me all customers from Mumbai"
-    storage_type = "aws"
-    bucket = "metadataproject"
-    table_path = "test-data/customer_data/customer_data_delta"
-    use_trino = $true
-} | ConvertTo-Json
-
-Invoke-RestMethod -Uri "http://localhost:8001/query/natural" `
-    -Method Post -ContentType "application/json" -Body $body
-
-# More examples:
-# "Count how many customers are in each city"
-# "Show customers with gmail addresses"
-# "Find customers whose name starts with A"
-```
+For questions or issues, please create an issue in the GitHub repository.
 
 ---
 
-**Last Updated:** Phase 8 Complete (Natural Language Queries)  
-**Status:** Fully functional read-query platform with AI-powered natural language interface  
-**Next:** Phase 9 - Write Operations
-
----
-
-## 🎉 Success Metrics
-
-If you can do all of these, the platform is working:
-
-- ✅ Generate Delta table from CSV → `/metadata/generate`
-- ✅ List 4 snapshots → `/query/snapshots/list`
-- ✅ See Delta files in S3 → AWS Console
-- ✅ Test Trino connection → `/query/test-connection`
-- ✅ Sync table to Trino → `/query/sync-table`
-- ✅ Fast query (< 1 second) → `/query/execute`
-- ✅ Time travel query → `/query/execute/snapshot`
-- ✅ Natural language query → `/query/natural` ("Show me customers from Mumbai")
-- ✅ See queries in Trino UI → http://localhost:8082
-- ✅ Verify generated SQL is correct (transparent AI)
-
-**All green? Congratulations! Your AI-powered lakehouse platform is live! 🚀🤖**
+**Built with ❤️ for modern data engineering**
